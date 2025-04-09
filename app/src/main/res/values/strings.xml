@@ -1,0 +1,66 @@
+<resources>
+    <string name="app_name">Muplay</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Beranda</string>
+    <string name="nav_history">Riwayat</string>
+    <string name="nav_playlist">Playlist</string>
+
+    <!-- Music Player -->
+    <string name="play">Putar</string>
+    <string name="pause">Jeda</string>
+    <string name="next">Berikutnya</string>
+    <string name="previous">Sebelumnya</string>
+    <string name="shuffle">Acak</string>
+    <string name="repeat">Ulangi</string>
+    <string name="volume">Volume</string>
+    <string name="now_playing">Sedang Diputar</string>
+
+    <!-- Home Screen -->
+    <string name="search_hint">Cari lagu, artis, atau album</string>
+    <string name="filter_artists">Filter Artis</string>
+    <string name="filter_genres">Filter Genre</string>
+    <string name="all">Semua</string>
+    <string name="recently_played">Terakhir Diputar</string>
+    <string name="popular_song">Lagu Populer</string>
+    <string name="total_songs">Total Lagu</string>
+    <string name="all_songs">Semua Lagu</string>
+    <string name="search_results">Hasil Pencarian</string>
+    <string name="no_songs_found">Tidak ada lagu ditemukan</string>
+
+    <!-- History Screen -->
+    <string name="sort">Urutkan</string>
+    <string name="sort_newest">Terbaru Dulu</string>
+    <string name="sort_oldest">Terlama Dulu</string>
+    <string name="sort_title_asc">Judul (A-Z)</string>
+    <string name="sort_title_desc">Judul (Z-A)</string>
+    <string name="sort_artist_asc">Artis (A-Z)</string>
+    <string name="sort_artist_desc">Artis (Z-A)</string>
+    <string name="clear_history">Hapus Riwayat</string>
+    <string name="clear_history_confirmation">Anda yakin ingin menghapus semua riwayat pemutaran musik?</string>
+    <string name="empty_history">Belum Ada Riwayat</string>
+    <string name="empty_history_message">Putar beberapa lagu untuk melihat riwayat di sini</string>
+    <string name="add_to_playlist">Tambahkan ke Playlist</string>
+    <string name="remove_from_history">Hapus dari Riwayat</string>
+
+    <!-- Playlist Screen -->
+    <string name="create_playlist">Buat Playlist</string>
+    <string name="new_playlist">Playlist Baru</string>
+    <string name="playlist_name">Nama Playlist</string>
+    <string name="empty_playlist">Playlist Kosong</string>
+    <string name="empty_playlist_message">Tambahkan lagu ke playlist ini</string>
+    <string name="empty_playlists">Belum Ada Playlist</string>
+    <string name="empty_playlists_message">Buat playlist untuk mengorganisir lagu favoritmu</string>
+    <string name="add_songs">Tambah Lagu</string>
+    <string name="rename_playlist">Ubah Nama Playlist</string>
+    <string name="delete_playlist">Hapus Playlist</string>
+    <string name="delete_playlist_confirmation">Apakah Anda yakin ingin menghapus playlist ini?</string>
+    <string name="remove_from_playlist">Hapus dari Playlist</string>
+    <string name="all_songs_in_playlist">Semua lagu sudah ada dalam playlist ini.</string>
+    <string name="play_all">Putar Semua</string>
+
+    <!-- Permissions -->
+    <string name="permission_required">Izin Diperlukan</string>
+    <string name="audio_permission_message">Muplay memerlukan izin untuk membaca file audio pada perangkat Anda.</string>
+    <string name="grant_permission">Berikan Izin</string>
+</resources>
