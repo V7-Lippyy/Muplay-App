@@ -94,6 +94,7 @@ dependencies {
     implementation "androidx.media3:media3-session:${rootProject.ext.media3_version}"
     implementation "androidx.media3:media3-common:${rootProject.ext.media3_version}"
     implementation "androidx.media3:media3-ui:${rootProject.ext.media3_version}"
+    implementation "androidx.media:media:1.6.0"
 
     // Coil for image loading
     implementation "io.coil-kt:coil-compose:2.4.0"

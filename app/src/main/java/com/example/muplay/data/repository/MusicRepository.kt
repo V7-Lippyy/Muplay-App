@@ -31,6 +31,7 @@ class MusicRepository @Inject constructor(
 
     companion object {
         private val DARK_THEME_KEY = booleanPreferencesKey("dark_theme")
+        private val CUSTOM_COVER_ARTS = "custom_cover_arts"
     }
 
     // ===== Operasi Database =====
@@ -62,6 +63,26 @@ class MusicRepository @Inject constructor(
     fun getDistinctArtists(): Flow<List<String>> = musicDao.getDistinctArtists()
 
     fun getDistinctGenres(): Flow<List<String>> = musicDao.getDistinctGenres()
+
+    // Update music with custom cover art
+    suspend fun updateMusicCoverArt(musicId: Long, coverArtPath: String) {
+        try {
+            // Get the music from database
+            val music = getMusicById(musicId).first()
+
+            // Update the music object with new cover art
+            music?.let {
+                val updatedMusic = it.copy(albumArtPath = coverArtPath)
+
+                // Save to database
+                musicDao.updateMusic(updatedMusic)
+
+                Log.d(TAG, "Updated cover art for music ID $musicId: $coverArtPath")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating music cover art", e)
+        }
+    }
 
     // ===== Preferences =====
     fun getDarkThemePreference(): Flow<Boolean> {

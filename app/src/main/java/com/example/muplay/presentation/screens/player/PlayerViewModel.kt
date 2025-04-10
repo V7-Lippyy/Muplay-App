@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.IBinder
 import android.util.Log
 import androidx.lifecycle.ViewModel
@@ -78,6 +79,30 @@ class PlayerViewModel @Inject constructor(
         // Bind ke music player service dan start service juga
         Log.d("PlayerViewModel", "Initializing PlayerViewModel")
         startAndBindMusicService()
+    }
+
+    // Update music with custom cover art
+    fun updateCustomCoverArt(musicId: Long, coverArtPath: String) {
+        viewModelScope.launch {
+            try {
+                // Update the music in the repository
+                musicRepository.updateMusicCoverArt(musicId, coverArtPath)
+
+                // Refresh the current music object if it's the one being played
+                if (_currentMusic.value?.id == musicId) {
+                    val updatedMusic = musicRepository.getMusicById(musicId).first()
+                    updatedMusic?.let {
+                        // Update local state
+                        _currentMusic.value = it
+
+                        // Update service if bound
+                        musicPlayerService?.updateCurrentMusicCoverArt(it)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error updating cover art: ${e.message}", e)
+            }
+        }
     }
 
     private fun startAndBindMusicService() {

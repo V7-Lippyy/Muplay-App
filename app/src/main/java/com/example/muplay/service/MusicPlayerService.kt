@@ -1,19 +1,31 @@
 package com.example.muplay.service
 
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Binder
+import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
 import android.util.Log
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.session.MediaSession
+import com.example.muplay.R
 import com.example.muplay.data.model.Music
 import com.example.muplay.data.repository.HistoryRepository
+import com.example.muplay.presentation.MainActivity
+import com.example.muplay.receiver.MediaButtonReceiver
 import com.example.muplay.util.Constants
+import com.example.muplay.util.NotificationPermissionHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,9 +37,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 private const val TAG = "MusicPlayerService"
+private const val NOTIFICATION_ID = 1001
+private const val CHANNEL_ID = "music_playback_channel"
 
 @AndroidEntryPoint
 class MusicPlayerService : Service() {
@@ -39,7 +54,6 @@ class MusicPlayerService : Service() {
 
     private val binder = MusicPlayerBinder()
     private lateinit var player: ExoPlayer
-    private lateinit var mediaSession: MediaSession
     private var positionPollerJob: Job? = null
     private var isServiceActive = true
 
@@ -61,6 +75,12 @@ class MusicPlayerService : Service() {
     private val _playlist = MutableStateFlow<List<Music>>(emptyList())
     val playlist: StateFlow<List<Music>> = _playlist.asStateFlow()
 
+    // Define playback states
+    companion object {
+        const val STATE_PLAYING = 3
+        const val STATE_PAUSED = 2
+    }
+
     private val playerListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             Log.d(TAG, "Playing state changed: $isPlaying")
@@ -69,8 +89,10 @@ class MusicPlayerService : Service() {
             // Start or stop position poller based on playing state
             if (isPlaying) {
                 startPositionPoller()
+                safelyUpdateNotification()
             } else {
                 stopPositionPoller()
+                safelyUpdateNotification()
             }
         }
 
@@ -88,6 +110,7 @@ class MusicPlayerService : Service() {
                 }
             } else if (playbackState == Player.STATE_READY) {
                 Log.d(TAG, "Player is ready")
+                safelyUpdateNotification()
             } else if (playbackState == Player.STATE_BUFFERING) {
                 Log.d(TAG, "Player is buffering")
             } else if (playbackState == Player.STATE_IDLE) {
@@ -100,6 +123,7 @@ class MusicPlayerService : Service() {
             mediaItem?.let {
                 // Perbarui info lagu saat ini
                 updateCurrentMusic(it)
+                safelyUpdateNotification()
             }
         }
 
@@ -122,15 +146,157 @@ class MusicPlayerService : Service() {
                 addListener(playerListener)
             }
 
-            // Buat media session
-            mediaSession = MediaSession.Builder(this, player).build()
+            // Create notification channel for API 26+
+            createNotificationChannel()
+
+            // Start service as foreground with empty notification
+            startForeground(NOTIFICATION_ID, createEmptyNotification())
+
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing player: ${e.message}", e)
         }
     }
 
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Music Playback",
+                NotificationManager.IMPORTANCE_LOW
+            ).apply {
+                description = "Controls for currently playing music"
+                setShowBadge(false)
+            }
+
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createEmptyNotification(): Notification {
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Muplay")
+            .setContentText("Music Playback")
+            .setSmallIcon(R.drawable.ic_music_note)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+    }
+
+    /**
+     * Safely update notification - only if we have permission on Android 13+
+     */
+    private fun safelyUpdateNotification() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            NotificationPermissionHelper.hasNotificationPermission(this)) {
+            updateNotification()
+        } else {
+            Log.d(TAG, "Skipping notification update - no permission")
+        }
+    }
+
+    private fun updateNotification() {
+        val music = _currentMusic.value ?: return
+
+        // Load album art for notification
+        var albumArt: Bitmap? = null
+        try {
+            if (music.albumArtPath != null) {
+                // Check if it's a file path (custom art) or content URI
+                if (music.albumArtPath!!.startsWith("/")) {
+                    val file = File(music.albumArtPath!!)
+                    if (file.exists()) {
+                        albumArt = BitmapFactory.decodeFile(file.absolutePath)
+                    }
+                } else {
+                    // Try to load from content URI
+                    val uri = Uri.parse(music.albumArtPath)
+                    val inputStream = contentResolver.openInputStream(uri)
+                    albumArt = inputStream?.use { BitmapFactory.decodeStream(it) }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading album art for notification: ${e.message}", e)
+        }
+
+        // Create play/pause action
+        val playPauseAction = NotificationCompat.Action.Builder(
+            if (_isPlaying.value) R.drawable.ic_pause else R.drawable.ic_play,
+            if (_isPlaying.value) "Pause" else "Play",
+            createMediaButtonPendingIntent(MediaButtonReceiver.ACTION_PLAY_PAUSE)
+        ).build()
+
+        // Create previous action
+        val prevAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_skip_previous,
+            "Previous",
+            createMediaButtonPendingIntent(MediaButtonReceiver.ACTION_SKIP_TO_PREVIOUS)
+        ).build()
+
+        // Create next action
+        val nextAction = NotificationCompat.Action.Builder(
+            R.drawable.ic_skip_next,
+            "Next",
+            createMediaButtonPendingIntent(MediaButtonReceiver.ACTION_SKIP_TO_NEXT)
+        ).build()
+
+        // Create content intent
+        val contentIntent = Intent(this, MainActivity::class.java)
+        val contentPendingIntent = PendingIntent.getActivity(
+            this, 0, contentIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Create notification
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle(music.title)
+            .setContentText(music.artist)
+            .setSubText(music.album)
+            .setLargeIcon(albumArt)
+            .setSmallIcon(R.drawable.ic_music_note)
+            .setContentIntent(contentPendingIntent)
+            .setDeleteIntent(createMediaButtonPendingIntent(MediaButtonReceiver.ACTION_STOP))
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
+            .addAction(prevAction)
+            .addAction(playPauseAction)
+            .addAction(nextAction)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setShowActionsInCompactView(0, 1, 2)
+            )
+            .build()
+
+        try {
+            // Update notification
+            val notificationManager = getSystemService(NotificationManager::class.java)
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating notification: ${e.message}", e)
+        }
+    }
+
+    private fun createMediaButtonPendingIntent(action: Long): PendingIntent {
+        val intent = Intent(Intent.ACTION_MEDIA_BUTTON)
+        intent.setPackage(packageName)
+        intent.putExtra("action", action)
+
+        return PendingIntent.getBroadcast(
+            this, action.toInt(), intent, PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "Service start command received")
+
+        // Handle media button actions
+        intent?.getLongExtra("action", -1)?.let { actionId ->
+            when (actionId) {
+                MediaButtonReceiver.ACTION_PLAY_PAUSE -> togglePlayPause()
+                MediaButtonReceiver.ACTION_SKIP_TO_NEXT -> skipToNext()
+                MediaButtonReceiver.ACTION_SKIP_TO_PREVIOUS -> skipToPrevious()
+                MediaButtonReceiver.ACTION_STOP -> stopSelf()
+            }
+        }
+
         // If service is killed, restart it
         return START_STICKY
     }
@@ -146,7 +312,6 @@ class MusicPlayerService : Service() {
         stopPositionPoller()
 
         try {
-            mediaSession.release()
             player.release()
         } catch (e: Exception) {
             Log.e(TAG, "Error releasing resources: ${e.message}", e)
@@ -200,6 +365,9 @@ class MusicPlayerService : Service() {
                         Log.e(TAG, "Error adding to history: ${e.message}", e)
                     }
                 }
+
+                // Update notification
+                safelyUpdateNotification()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating current music: ${e.message}", e)
@@ -225,9 +393,21 @@ class MusicPlayerService : Service() {
                 _isPlaying.value = true
 
                 Log.d(TAG, "Started playing music: ${music.title}")
+
+                // Update notification
+                safelyUpdateNotification()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error playing music: ${e.message}", e)
+        }
+    }
+
+    fun updateCurrentMusicCoverArt(updatedMusic: Music) {
+        try {
+            _currentMusic.value = updatedMusic
+            safelyUpdateNotification()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating current music cover art: ${e.message}", e)
         }
     }
 
@@ -253,6 +433,9 @@ class MusicPlayerService : Service() {
             }
 
             player.play()
+
+            // Update notification
+            safelyUpdateNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Error setting playlist: ${e.message}", e)
         }
@@ -267,6 +450,7 @@ class MusicPlayerService : Service() {
             putString(Constants.EXTRA_MUSIC_ALBUM, music.album)
             putLong(Constants.EXTRA_MUSIC_DURATION, music.duration)
             putString(Constants.EXTRA_MUSIC_ART_URI, music.albumArtPath)
+            putString(Constants.EXTRA_MUSIC_URI, music.uri)
         }
 
         return MediaItem.Builder()
@@ -292,6 +476,7 @@ class MusicPlayerService : Service() {
                 player.play()
             }
             _isPlaying.value = player.isPlaying
+            safelyUpdateNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Error in togglePlayPause: ${e.message}", e)
         }
@@ -302,6 +487,7 @@ class MusicPlayerService : Service() {
             Log.d(TAG, "Skip to next")
             if (player.hasNextMediaItem()) {
                 player.seekToNext()
+                safelyUpdateNotification()
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in skipToNext: ${e.message}", e)
@@ -317,6 +503,7 @@ class MusicPlayerService : Service() {
                 // Jika tidak ada lagu sebelumnya, kembali ke awal lagu saat ini
                 player.seekTo(0)
             }
+            safelyUpdateNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Error in skipToPrevious: ${e.message}", e)
         }
@@ -378,7 +565,7 @@ private fun Bundle.getMusicFromExtras(): Music {
         artist = getString(Constants.EXTRA_MUSIC_ARTIST, ""),
         album = getString(Constants.EXTRA_MUSIC_ALBUM, ""),
         duration = getLong(Constants.EXTRA_MUSIC_DURATION),
-        uri = getString(Constants.EXTRA_MUSIC_URI, ""), // Make sure this key exists in Constants.kt
+        uri = getString(Constants.EXTRA_MUSIC_URI, ""),
         albumArtPath = getString(Constants.EXTRA_MUSIC_ART_URI)
     )
 }

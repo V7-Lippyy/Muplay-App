@@ -22,6 +22,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -29,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -37,6 +39,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.muplay.presentation.screens.player.PlayerViewModel
+import com.example.muplay.presentation.theme.PlayButtonColor
 import com.example.muplay.util.TimeUtil
 
 @Composable
@@ -56,16 +59,15 @@ fun MusicMiniPlayer(
             0f
         }
 
-        Box(
+        Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 4.dp)
+                .fillMaxWidth(),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shadowElevation = 8.dp
         ) {
-            Card(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(onClick = onMiniPlayerClick),
-                elevation = CardDefaults.elevatedCardElevation()
             ) {
                 Column {
                     // Progress bar - Fixed to use proper LinearProgressIndicator parameter
@@ -74,13 +76,16 @@ fun MusicMiniPlayer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(2.dp),
-                        color = MaterialTheme.colorScheme.primary
+                        color = PlayButtonColor,
+                        trackColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.2f)
                     )
 
+                    // Player content
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .clickable(onClick = onMiniPlayerClick)
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Album art
@@ -100,7 +105,7 @@ fun MusicMiniPlayer(
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
 
                         // Song info
                         Column(
@@ -110,14 +115,16 @@ fun MusicMiniPlayer(
                                 text = music.title,
                                 style = MaterialTheme.typography.bodyMedium,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer
                             )
 
                             Text(
                                 text = music.artist,
                                 style = MaterialTheme.typography.bodySmall,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
                             )
                         }
 
@@ -125,23 +132,27 @@ fun MusicMiniPlayer(
                         Row(
                             horizontalArrangement = Arrangement.End
                         ) {
+                            // Play/Pause
                             IconButton(
                                 onClick = { viewModel.togglePlayPause() },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
                                     imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "Pause" else "Play"
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
 
+                            // Next button
                             IconButton(
                                 onClick = { viewModel.skipToNext() },
-                                modifier = Modifier.size(32.dp)
+                                modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.SkipNext,
-                                    contentDescription = "Next"
+                                    contentDescription = "Next",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
                                 )
                             }
                         }

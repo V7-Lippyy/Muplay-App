@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -28,6 +31,9 @@ class PlaylistDetailViewModel @Inject constructor(
 
     // ID playlist dari navigasi
     private val playlistId: Long = savedStateHandle.get<Long>("playlistId") ?: -1L
+
+    // Cache of all songs from repository
+    private val _allMusic = MutableStateFlow<List<Music>>(emptyList())
 
     // Data playlist
     val playlistWithMusic = playlistRepository.getPlaylistWithMusic(playlistId)
@@ -45,21 +51,24 @@ class PlaylistDetailViewModel @Inject constructor(
             initialValue = null
         )
 
-    // Daftar lagu dalam playlist
-    val songs: StateFlow<List<Music>> = playlistWithMusic.map { it?.songs ?: emptyList() }
+    // Daftar lagu dalam playlist - Using a distinct operator to prevent unnecessary UI updates
+    val songs: StateFlow<List<Music>> = playlistWithMusic
+        .map { it?.songs ?: emptyList() }
+        .distinctUntilChanged()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    // Daftar semua lagu untuk ditambahkan ke playlist
-    val allMusic = musicRepository.getAllMusic()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    init {
+        // Load all music when the viewmodel is created
+        viewModelScope.launch {
+            musicRepository.getAllMusic().collect { musicList ->
+                _allMusic.value = musicList
+            }
+        }
+    }
 
     // Menghapus lagu dari playlist
     fun removeSongFromPlaylist(musicId: Long) {
@@ -94,8 +103,9 @@ class PlaylistDetailViewModel @Inject constructor(
 
     // Fungsi untuk mendapatkan lagu yang belum ada di playlist
     fun getSongsNotInPlaylist(): List<Music> {
-        val playlistSongIds = songs.value.map { it.id }
-        return allMusic.value.filter { it.id !in playlistSongIds }
+        val currentSongs = songs.value
+        val currentSongIds = currentSongs.map { it.id }.toSet()
+        return _allMusic.value.filter { it.id !in currentSongIds }
     }
 
     // Mengubah posisi lagu dalam playlist

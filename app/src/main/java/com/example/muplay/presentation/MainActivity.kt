@@ -26,6 +26,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.repository.MusicRepository
 import com.example.muplay.presentation.theme.MuplayTheme
+import com.example.muplay.util.NotificationPermissionHelper
 import com.example.muplay.util.PermissionHandler
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -38,6 +39,7 @@ import javax.inject.Inject
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var permissionHandler: PermissionHandler
+    private lateinit var notificationPermissionHelper: NotificationPermissionHelper
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -47,6 +49,10 @@ class MainActivity : ComponentActivity() {
 
         // Inisialisasi permission handler
         permissionHandler = PermissionHandler(this)
+
+        // Initialize notification permission helper for Android 13+
+        notificationPermissionHelper = NotificationPermissionHelper(this)
+        notificationPermissionHelper.setupPermissionLauncher()
 
         setContent {
             // Gunakan preferensi tema dari DataStore
@@ -68,6 +74,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+
+        // Request notification permission (only on Android 13+)
+        notificationPermissionHelper.checkAndRequestNotificationPermission()
     }
 
     override fun onResume() {

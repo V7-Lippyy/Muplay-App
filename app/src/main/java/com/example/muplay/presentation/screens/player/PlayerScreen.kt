@@ -1,5 +1,6 @@
 package com.example.muplay.presentation.screens.player
 
+import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -27,6 +29,7 @@ import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.VolumeDown
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -35,12 +38,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,7 +61,9 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.muplay.presentation.theme.PlayButtonColor
+import com.example.muplay.util.ImagePickerUtil
 import com.example.muplay.util.TimeUtil
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -70,6 +77,30 @@ fun PlayerScreen(
     val shuffleMode by viewModel.shuffleMode.collectAsState()
     val repeatMode by viewModel.repeatMode.collectAsState()
     val volume by viewModel.volume.collectAsState()
+
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    // State for image picker
+    var showCustomCoverDialog by remember { mutableStateOf(false) }
+
+    // Image picker launcher
+    val pickImage = ImagePickerUtil.rememberImagePicker { uri ->
+        coroutineScope.launch {
+            currentMusic?.let { music ->
+                val fileName = "cover_${music.id}.jpg"
+                val savedPath = ImagePickerUtil.saveImageToInternalStorage(
+                    context,
+                    uri,
+                    fileName
+                )
+                savedPath?.let { path ->
+                    // Update custom cover art in database
+                    viewModel.updateCustomCoverArt(music.id, path)
+                }
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -91,7 +122,7 @@ fun PlayerScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             currentMusic?.let { music ->
-                // Album art
+                // Album art with edit option
                 Box(
                     modifier = Modifier
                         .weight(0.5f)
@@ -99,6 +130,7 @@ fun PlayerScreen(
                         .padding(16.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    // Album art
                     AsyncImage(
                         model = ImageRequest.Builder(LocalContext.current)
                             .data(music.albumArtPath)
@@ -110,6 +142,25 @@ fun PlayerScreen(
                             .fillMaxSize()
                             .clip(MaterialTheme.shapes.large)
                     )
+
+                    // Edit cover button
+                    IconButton(
+                        onClick = { showCustomCoverDialog = true },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(8.dp)
+                            .size(36.dp)
+                            .background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                                CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "Ubah Cover",
+                            tint = Color.White
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
@@ -283,6 +334,28 @@ fun PlayerScreen(
                         imageVector = Icons.Default.VolumeUp,
                         contentDescription = null,
                         modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+
+                // Custom cover art dialog
+                if (showCustomCoverDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showCustomCoverDialog = false },
+                        title = { Text("Ubah Cover Album") },
+                        text = { Text("Apakah Anda ingin mengubah cover album untuk lagu ini?") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                pickImage()
+                                showCustomCoverDialog = false
+                            }) {
+                                Text("Pilih Gambar")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showCustomCoverDialog = false }) {
+                                Text("Batal")
+                            }
+                        }
                     )
                 }
             } ?: run {
