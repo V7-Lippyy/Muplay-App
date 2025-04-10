@@ -61,7 +61,6 @@ import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.example.muplay.presentation.theme.PlayButtonColor
-import com.example.muplay.util.ImagePickerUtil
 import com.example.muplay.util.TimeUtil
 import kotlinx.coroutines.launch
 
@@ -84,20 +83,12 @@ fun PlayerScreen(
     // State for image picker
     var showCustomCoverDialog by remember { mutableStateOf(false) }
 
-    // Image picker launcher
-    val pickImage = ImagePickerUtil.rememberImagePicker { uri ->
-        coroutineScope.launch {
-            currentMusic?.let { music ->
-                val fileName = "cover_${music.id}.jpg"
-                val savedPath = ImagePickerUtil.saveImageToInternalStorage(
-                    context,
-                    uri,
-                    fileName
-                )
-                savedPath?.let { path ->
-                    // Update custom cover art in database
-                    viewModel.updateCustomCoverArt(music.id, path)
-                }
+    // Content URI dari image picker
+    val getContent = rememberImagePickerLauncher { uri ->
+        currentMusic?.let { music ->
+            coroutineScope.launch {
+                // Update custom cover art menggunakan ViewModel
+                viewModel.updateCustomCoverArt(music.id, uri)
             }
         }
     }
@@ -345,7 +336,7 @@ fun PlayerScreen(
                         text = { Text("Apakah Anda ingin mengubah cover album untuk lagu ini?") },
                         confirmButton = {
                             TextButton(onClick = {
-                                pickImage()
+                                getContent()
                                 showCustomCoverDialog = false
                             }) {
                                 Text("Pilih Gambar")
@@ -372,4 +363,19 @@ fun PlayerScreen(
             }
         }
     }
+}
+
+@Composable
+fun rememberImagePickerLauncher(onImagePicked: (Uri) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val launcher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent(),
+        onResult = { uri ->
+            if (uri != null) {
+                onImagePicked(uri)
+            }
+        }
+    )
+
+    return { launcher.launch("image/*") }
 }

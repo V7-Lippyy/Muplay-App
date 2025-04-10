@@ -3,7 +3,6 @@ package com.example.muplay.data.repository
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
-import android.database.Cursor
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.MediaStore
@@ -12,8 +11,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.muplay.data.local.database.dao.MusicDao
 import com.example.muplay.data.model.Music
+import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -28,10 +29,11 @@ class MusicRepository @Inject constructor(
     private val dataStore: DataStore<Preferences>
 ) {
     private val TAG = "MusicRepository"
+    private val coverArtManager = CoverArtManager(context)
 
     companion object {
         private val DARK_THEME_KEY = booleanPreferencesKey("dark_theme")
-        private val CUSTOM_COVER_ARTS = "custom_cover_arts"
+        private val CUSTOM_COVER_ARTS_KEY = stringPreferencesKey("custom_cover_arts")
     }
 
     // ===== Operasi Database =====
@@ -39,8 +41,23 @@ class MusicRepository @Inject constructor(
         try {
             val musicList = loadMusicFromDevice()
             if (musicList.isNotEmpty()) {
+                // Simpan custom cover arts yang sudah ada sebelum menghapus
+                val customCoverArts = getCustomCoverArts()
+
+                // Update musik dengan custom cover art jika ada
+                val updatedMusicList = musicList.map { music ->
+                    val customCoverPath = customCoverArts[music.id.toString()]
+                    if (customCoverPath != null && customCoverPath.isNotEmpty()) {
+                        music.copy(albumArtPath = customCoverPath)
+                    } else {
+                        music
+                    }
+                }
+
                 musicDao.deleteAll()
-                musicDao.insertAll(musicList)
+                musicDao.insertAll(updatedMusicList)
+
+                Log.d(TAG, "Music library refreshed with ${updatedMusicList.size} songs")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error refreshing music library", e)
@@ -77,10 +94,67 @@ class MusicRepository @Inject constructor(
                 // Save to database
                 musicDao.updateMusic(updatedMusic)
 
+                // Also save to preferences for persistence across app restarts
+                saveCustomCoverArt(musicId.toString(), coverArtPath)
+
                 Log.d(TAG, "Updated cover art for music ID $musicId: $coverArtPath")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating music cover art", e)
+        }
+    }
+
+    // Save custom cover art path to preferences
+    private suspend fun saveCustomCoverArt(musicId: String, coverArtPath: String) {
+        try {
+            val customCoverArts = getCustomCoverArts().toMutableMap()
+            customCoverArts[musicId] = coverArtPath
+
+            // Convert to JSON string
+            val jsonString = customCoverArts.entries.joinToString(separator = ",") {
+                "\"${it.key}\":\"${it.value}\""
+            }
+            val jsonResult = "{$jsonString}"
+
+            // Save to preferences
+            dataStore.edit { preferences ->
+                preferences[CUSTOM_COVER_ARTS_KEY] = jsonResult
+            }
+
+            Log.d(TAG, "Saved custom cover art to preferences for music ID $musicId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving custom cover art to preferences", e)
+        }
+    }
+
+    // Get all custom cover arts from preferences
+    private suspend fun getCustomCoverArts(): Map<String, String> {
+        return try {
+            val jsonString = dataStore.data.map { preferences ->
+                preferences[CUSTOM_COVER_ARTS_KEY] ?: "{}"
+            }.first()
+
+            // Simple JSON parsing (for a more robust solution you might want to use a JSON library)
+            if (jsonString == "{}") {
+                emptyMap()
+            } else {
+                val result = mutableMapOf<String, String>()
+                val content = jsonString.trim().removeSurrounding("{", "}")
+                if (content.isNotEmpty()) {
+                    content.split(",").forEach { pair ->
+                        val keyValue = pair.split(":")
+                        if (keyValue.size == 2) {
+                            val key = keyValue[0].trim().removeSurrounding("\"")
+                            val value = keyValue[1].trim().removeSurrounding("\"")
+                            result[key] = value
+                        }
+                    }
+                }
+                result
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting custom cover arts from preferences", e)
+            emptyMap()
         }
     }
 

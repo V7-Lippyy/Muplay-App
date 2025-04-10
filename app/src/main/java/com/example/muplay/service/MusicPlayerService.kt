@@ -26,6 +26,7 @@ import com.example.muplay.presentation.MainActivity
 import com.example.muplay.receiver.MediaButtonReceiver
 import com.example.muplay.util.Constants
 import com.example.muplay.util.NotificationPermissionHelper
+import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -56,6 +57,9 @@ class MusicPlayerService : Service() {
     private lateinit var player: ExoPlayer
     private var positionPollerJob: Job? = null
     private var isServiceActive = true
+
+    // Inisialisasi CoverArtManager
+    private lateinit var coverArtManager: CoverArtManager
 
     private val _currentMusic = MutableStateFlow<Music?>(null)
     val currentMusic: StateFlow<Music?> = _currentMusic.asStateFlow()
@@ -141,6 +145,9 @@ class MusicPlayerService : Service() {
         Log.d(TAG, "Service created")
 
         try {
+            // Inisialisasi CoverArtManager
+            coverArtManager = CoverArtManager(this)
+
             // Inisialisasi ExoPlayer
             player = ExoPlayer.Builder(this).build().apply {
                 addListener(playerListener)
@@ -201,23 +208,28 @@ class MusicPlayerService : Service() {
         var albumArt: Bitmap? = null
         try {
             if (music.albumArtPath != null) {
-                // Check if it's a file path (custom art) or content URI
-                if (music.albumArtPath!!.startsWith("/")) {
-                    val file = File(music.albumArtPath!!)
-                    if (file.exists()) {
-                        albumArt = BitmapFactory.decodeFile(file.absolutePath)
+                serviceScope.launch(Dispatchers.IO) {
+                    // Gunakan CoverArtManager untuk memuat album art
+                    val bitmap = coverArtManager.loadCoverArtBitmap(music.albumArtPath)
+                    if (bitmap != null) {
+                        createAndShowNotification(music, bitmap)
+                    } else {
+                        // Jika gagal memuat, tampilkan notifikasi tanpa album art
+                        createAndShowNotification(music, null)
                     }
-                } else {
-                    // Try to load from content URI
-                    val uri = Uri.parse(music.albumArtPath)
-                    val inputStream = contentResolver.openInputStream(uri)
-                    albumArt = inputStream?.use { BitmapFactory.decodeStream(it) }
                 }
+            } else {
+                // Jika tidak ada album art, tampilkan notifikasi tanpa album art
+                createAndShowNotification(music, null)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading album art for notification: ${e.message}", e)
+            Log.e(TAG, "Error in updateNotification: ${e.message}", e)
+            // Jika terjadi error, tetap tampilkan notifikasi tanpa album art
+            createAndShowNotification(music, null)
         }
+    }
 
+    private fun createAndShowNotification(music: Music, albumArt: Bitmap?) {
         // Create play/pause action
         val playPauseAction = NotificationCompat.Action.Builder(
             if (_isPlaying.value) R.drawable.ic_pause else R.drawable.ic_play,
@@ -404,8 +416,14 @@ class MusicPlayerService : Service() {
 
     fun updateCurrentMusicCoverArt(updatedMusic: Music) {
         try {
+            // Update current music dengan cover art yang baru
             _currentMusic.value = updatedMusic
+
+            // Perbarui notifikasi dengan cover art baru
             safelyUpdateNotification()
+
+            // Log untuk memastikan perubahan
+            Log.d(TAG, "Updated cover art: ${updatedMusic.albumArtPath}")
         } catch (e: Exception) {
             Log.e(TAG, "Error updating current music cover art: ${e.message}", e)
         }

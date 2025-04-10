@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.model.Music
 import com.example.muplay.data.repository.MusicRepository
 import com.example.muplay.service.MusicPlayerService
+import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +33,7 @@ class PlayerViewModel @Inject constructor(
     private var musicPlayerService: MusicPlayerService? = null
     private var bound = false
     private var pendingMusicId: Long? = null
+    private val coverArtManager = CoverArtManager(context)
 
     // Placeholder state flows jika service belum terhubung
     private val _currentMusic = MutableStateFlow<Music?>(null)
@@ -82,22 +84,35 @@ class PlayerViewModel @Inject constructor(
     }
 
     // Update music with custom cover art
-    fun updateCustomCoverArt(musicId: Long, coverArtPath: String) {
+    fun updateCustomCoverArt(musicId: Long, uri: Uri) {
         viewModelScope.launch {
             try {
-                // Update the music in the repository
-                musicRepository.updateMusicCoverArt(musicId, coverArtPath)
+                // Save the image to permanent storage using CoverArtManager
+                val coverArtPath = coverArtManager.saveCoverArtFromUri(uri, musicId)
 
-                // Refresh the current music object if it's the one being played
-                if (_currentMusic.value?.id == musicId) {
-                    val updatedMusic = musicRepository.getMusicById(musicId).first()
-                    updatedMusic?.let {
-                        // Update local state
-                        _currentMusic.value = it
+                if (coverArtPath != null) {
+                    Log.d("PlayerViewModel", "Saving cover art path: $coverArtPath for music ID: $musicId")
 
-                        // Update service if bound
-                        musicPlayerService?.updateCurrentMusicCoverArt(it)
+                    // Update the music in the repository with persistent storage
+                    musicRepository.updateMusicCoverArt(musicId, coverArtPath)
+
+                    // Refresh the current music object if it's the one being played
+                    if (_currentMusic.value?.id == musicId) {
+                        val updatedMusic = musicRepository.getMusicById(musicId).first()
+                        updatedMusic?.let {
+                            // Verify cover art exists after saving
+                            val exists = coverArtManager.coverArtExists(coverArtPath)
+                            Log.d("PlayerViewModel", "Cover art exists after saving: $exists")
+
+                            // Update local state
+                            _currentMusic.value = it
+
+                            // Update service if bound
+                            musicPlayerService?.updateCurrentMusicCoverArt(it)
+                        }
                     }
+                } else {
+                    Log.e("PlayerViewModel", "Failed to save cover art for music ID: $musicId")
                 }
             } catch (e: Exception) {
                 Log.e("PlayerViewModel", "Error updating cover art: ${e.message}", e)
@@ -122,6 +137,12 @@ class PlayerViewModel @Inject constructor(
             viewModelScope.launch {
                 service.currentMusic.collect { music ->
                     _currentMusic.value = music
+
+                    // Verify cover art exists for the current music
+                    music?.let {
+                        val exists = coverArtManager.coverArtExists(music.albumArtPath)
+                        Log.d("PlayerViewModel", "Cover art exists for current music: $exists, path: ${music.albumArtPath}")
+                    }
                 }
             }
 
@@ -184,6 +205,11 @@ class PlayerViewModel @Inject constructor(
 
                 if (music != null) {
                     Log.d("PlayerViewModel", "Found music: ${music.title}, playing it now")
+
+                    // Verify cover art exists
+                    val exists = coverArtManager.coverArtExists(music.albumArtPath)
+                    Log.d("PlayerViewModel", "Cover art exists before playing: $exists, path: ${music.albumArtPath}")
+
                     // Check music file exists
                     if (music.uri.isNotEmpty()) {
                         musicPlayerService?.playMusic(music)

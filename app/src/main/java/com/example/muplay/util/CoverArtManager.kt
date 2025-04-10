@@ -39,14 +39,25 @@ class CoverArtManager(private val context: Context) {
                 val inputStream = context.contentResolver.openInputStream(uri)
 
                 // Buat nama file yang unik berdasarkan musicId
-                val fileName = "cover_${musicId}_${UUID.randomUUID()}.jpg"
+                val fileName = "cover_${musicId}.jpg"
                 val file = File(coverArtDirectory, fileName)
+
+                // Jika file sudah ada, hapus terlebih dahulu
+                if (file.exists()) {
+                    file.delete()
+                }
 
                 // Simpan gambar ke file
                 inputStream?.use { input ->
                     FileOutputStream(file).use { output ->
                         input.copyTo(output)
                     }
+                }
+
+                // Pastikan file berhasil dibuat
+                if (!file.exists() || file.length() == 0L) {
+                    Log.e(TAG, "Failed to create cover art file")
+                    return@withContext null
                 }
 
                 Log.d(TAG, "Cover art tersimpan: ${file.absolutePath}")
@@ -70,20 +81,75 @@ class CoverArtManager(private val context: Context) {
                     // Path file lokal
                     val file = File(path)
                     if (file.exists()) {
-                        BitmapFactory.decodeFile(file.absolutePath)
+                        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                        if (bitmap != null) {
+                            Log.d(TAG, "Successfully loaded bitmap from file: $path")
+                            bitmap
+                        } else {
+                            Log.e(TAG, "Failed to decode bitmap from file: $path")
+                            null
+                        }
                     } else {
                         Log.e(TAG, "File tidak ditemukan: $path")
                         null
                     }
                 } else {
                     // URI content
-                    val uri = Uri.parse(path)
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    inputStream?.use { BitmapFactory.decodeStream(it) }
+                    try {
+                        val uri = Uri.parse(path)
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        inputStream?.use {
+                            val bitmap = BitmapFactory.decodeStream(it)
+                            if (bitmap != null) {
+                                Log.d(TAG, "Successfully loaded bitmap from URI: $path")
+                                bitmap
+                            } else {
+                                Log.e(TAG, "Failed to decode bitmap from URI: $path")
+                                null
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading from URI: ${e.message}", e)
+                        null
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error memuat cover art: ${e.message}", e)
                 null
+            }
+        }
+    }
+
+    /**
+     * Memeriksa apakah file cover art ada
+     */
+    suspend fun coverArtExists(path: String?): Boolean {
+        if (path == null) return false
+
+        return withContext(Dispatchers.IO) {
+            try {
+                if (path.startsWith("/")) {
+                    val file = File(path)
+                    val exists = file.exists() && file.length() > 0
+                    Log.d(TAG, "Cover art file exists: $exists, path: $path")
+                    exists
+                } else {
+                    // Untuk URI, kita coba akses untuk memeriksa
+                    try {
+                        val uri = Uri.parse(path)
+                        val inputStream = context.contentResolver.openInputStream(uri)
+                        val exists = inputStream != null
+                        inputStream?.close()
+                        Log.d(TAG, "Cover art URI exists: $exists, path: $path")
+                        exists
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error checking URI: ${e.message}", e)
+                        false
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error memeriksa cover art: ${e.message}", e)
+                false
             }
         }
     }
@@ -98,12 +164,26 @@ class CoverArtManager(private val context: Context) {
                 // Hanya hapus file yang tidak ada dalam daftar usedPaths
                 coverArtDirectory.listFiles()?.forEach { file ->
                     if (!usedPaths.contains(file.absolutePath)) {
-                        file.delete()
-                        Log.d(TAG, "Hapus cover art yang tidak digunakan: ${file.absolutePath}")
+                        val deleted = file.delete()
+                        Log.d(TAG, "Hapus cover art yang tidak digunakan: ${file.absolutePath}, berhasil: $deleted")
                     }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error membersihkan cover art: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Mendapatkan semua file cover art
+     */
+    suspend fun getAllCoverArtFiles(): List<File> {
+        return withContext(Dispatchers.IO) {
+            try {
+                coverArtDirectory.listFiles()?.toList() ?: emptyList()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error getting cover art files: ${e.message}", e)
+                emptyList()
             }
         }
     }
