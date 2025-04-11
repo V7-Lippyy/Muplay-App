@@ -200,6 +200,9 @@ class PlayerViewModel @Inject constructor(
             try {
                 Log.d("PlayerViewModel", "Fetching music with ID: $musicId")
 
+                // Get all music for playlist
+                val allMusic = musicRepository.getAllMusic().first()
+
                 // Get music by ID, using first() to get a single value instead of collecting indefinitely
                 val music = musicRepository.getMusicById(musicId).first()
 
@@ -212,7 +215,8 @@ class PlayerViewModel @Inject constructor(
 
                     // Check music file exists
                     if (music.uri.isNotEmpty()) {
-                        musicPlayerService?.playMusic(music)
+                        // Play the music with the complete playlist
+                        musicPlayerService?.playMusic(music, allMusic)
                     } else {
                         Log.e("PlayerViewModel", "Music URI is empty for ID: $musicId")
                     }

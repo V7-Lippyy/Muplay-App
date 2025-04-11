@@ -505,7 +505,11 @@ class MusicPlayerService : Service() {
             Log.d(TAG, "Skip to next")
             if (player.hasNextMediaItem()) {
                 player.seekToNext()
+                player.playWhenReady = true  // Ensure it plays after skipping
+                Log.d(TAG, "Skipped to next media item. Current index: ${player.currentMediaItemIndex}")
                 safelyUpdateNotification()
+            } else {
+                Log.d(TAG, "No next item available")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in skipToNext: ${e.message}", e)
@@ -515,11 +519,18 @@ class MusicPlayerService : Service() {
     fun skipToPrevious() {
         try {
             Log.d(TAG, "Skip to previous")
-            if (player.hasPreviousMediaItem()) {
+            // If we're more than 3 seconds into the song, restart it instead of going to previous
+            if (player.currentPosition > 3000) {
+                player.seekTo(0)
+                Log.d(TAG, "Restarting current track because position > 3s")
+            } else if (player.hasPreviousMediaItem()) {
                 player.seekToPrevious()
+                Log.d(TAG, "Skipped to previous media item. Current index: ${player.currentMediaItemIndex}")
+                player.playWhenReady = true  // Ensure it plays after skipping
             } else {
                 // Jika tidak ada lagu sebelumnya, kembali ke awal lagu saat ini
                 player.seekTo(0)
+                Log.d(TAG, "No previous item available, restarting current track")
             }
             safelyUpdateNotification()
         } catch (e: Exception) {
