@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -132,6 +133,18 @@ fun MusicMiniPlayer(
                         Row(
                             horizontalArrangement = Arrangement.End
                         ) {
+                            // Previous button
+                            IconButton(
+                                onClick = { viewModel.skipToPrevious() },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SkipPrevious,
+                                    contentDescription = "Previous",
+                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                )
+                            }
+
                             // Play/Pause
                             IconButton(
                                 onClick = { viewModel.togglePlayPause() },
