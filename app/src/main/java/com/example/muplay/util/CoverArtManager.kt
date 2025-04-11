@@ -70,6 +70,49 @@ class CoverArtManager(private val context: Context) {
     }
 
     /**
+     * Menyimpan URI gambar ke penyimpanan permanen dengan nama file kustom
+     * @param uri URI dari gambar yang akan disimpan
+     * @param musicId ID musik (0 jika bukan untuk musik spesifik)
+     * @param customFileName Nama file kustom (opsional)
+     * @return Path file yang disimpan, atau null jika gagal
+     */
+    suspend fun saveCoverArtFromUri(uri: Uri, musicId: Long = 0, customFileName: String? = null): String? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val inputStream = context.contentResolver.openInputStream(uri)
+
+                // Buat nama file yang unik berdasarkan musicId atau nama kustom
+                val fileName = customFileName ?: "cover_${musicId}.jpg"
+                val file = File(coverArtDirectory, fileName)
+
+                // Jika file sudah ada, hapus terlebih dahulu
+                if (file.exists()) {
+                    file.delete()
+                }
+
+                // Simpan gambar ke file
+                inputStream?.use { input ->
+                    FileOutputStream(file).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+
+                // Pastikan file berhasil dibuat
+                if (!file.exists() || file.length() == 0L) {
+                    Log.e(TAG, "Failed to create cover art file")
+                    return@withContext null
+                }
+
+                Log.d(TAG, "Cover art tersimpan: ${file.absolutePath}")
+                file.absolutePath
+            } catch (e: Exception) {
+                Log.e(TAG, "Error menyimpan cover art: ${e.message}", e)
+                null
+            }
+        }
+    }
+
+    /**
      * Memuat bitmap dari path file atau URI
      */
     suspend fun loadCoverArtBitmap(path: String?): Bitmap? {

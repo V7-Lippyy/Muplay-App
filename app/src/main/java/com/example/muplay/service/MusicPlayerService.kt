@@ -429,6 +429,20 @@ class MusicPlayerService : Service() {
         }
     }
 
+    fun updateCurrentMusicMetadata(updatedMusic: Music) {
+        try {
+            // Update current music with new metadata
+            _currentMusic.value = updatedMusic
+
+            // Update notification with new metadata
+            safelyUpdateNotification()
+
+            Log.d(TAG, "Updated metadata in service: ${updatedMusic.title} by ${updatedMusic.artist}")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating current music metadata: ${e.message}", e)
+        }
+    }
+
     fun setPlaylist(songs: List<Music>, currentMusic: Music? = null) {
         try {
             Log.d(TAG, "Setting playlist with ${songs.size} songs")
@@ -611,3 +625,4 @@ private fun Bundle.getMusicFromExtras(): Music {
         albumArtPath = getString(Constants.EXTRA_MUSIC_ART_URI)
     )
 }
+

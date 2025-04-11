@@ -83,6 +83,35 @@ class PlayerViewModel @Inject constructor(
         startAndBindMusicService()
     }
 
+    // Update music metadata
+    fun updateMusicMetadata(musicId: Long, title: String, artist: String, album: String) {
+        viewModelScope.launch {
+            try {
+                // Update in repository
+                musicRepository.updateMusicMetadata(musicId, title, artist, album)
+
+                // If this is the currently playing music, update the UI state
+                if (_currentMusic.value?.id == musicId) {
+                    val updatedMusic = _currentMusic.value?.copy(
+                        title = title,
+                        artist = artist,
+                        album = album
+                    )
+                    updatedMusic?.let {
+                        _currentMusic.value = it
+
+                        // Update the service data if bound
+                        musicPlayerService?.updateCurrentMusicMetadata(it)
+                    }
+                }
+
+                Log.d("PlayerViewModel", "Updated metadata for music ID: $musicId")
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error updating metadata: ${e.message}", e)
+            }
+        }
+    }
+
     // Update music with custom cover art
     fun updateCustomCoverArt(musicId: Long, uri: Uri) {
         viewModelScope.launch {

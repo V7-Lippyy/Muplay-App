@@ -60,6 +60,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.muplay.presentation.components.MetadataEditorDialog
 import com.example.muplay.presentation.theme.PlayButtonColor
 import com.example.muplay.util.TimeUtil
 import kotlinx.coroutines.launch
@@ -80,8 +81,9 @@ fun PlayerScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
-    // State for image picker
+    // State for image picker and metadata editor
     var showCustomCoverDialog by remember { mutableStateOf(false) }
+    var showMetadataEditorDialog by remember { mutableStateOf(false) }
 
     // Content URI dari image picker
     val getContent = rememberImagePickerLauncher { uri ->
@@ -190,7 +192,21 @@ fun PlayerScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                // Edit metadata button
+                Spacer(modifier = Modifier.height(8.dp))
+
+                IconButton(
+                    onClick = { showMetadataEditorDialog = true },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Metadata",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Seekbar
                 Column(
@@ -346,6 +362,17 @@ fun PlayerScreen(
                             TextButton(onClick = { showCustomCoverDialog = false }) {
                                 Text("Batal")
                             }
+                        }
+                    )
+                }
+
+                // Metadata editor dialog
+                if (showMetadataEditorDialog) {
+                    MetadataEditorDialog(
+                        music = music,
+                        onDismiss = { showMetadataEditorDialog = false },
+                        onSave = { title, artist, album ->
+                            viewModel.updateMusicMetadata(music.id, title, artist, album)
                         }
                     )
                 }

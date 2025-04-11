@@ -15,6 +15,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.example.muplay.data.local.database.dao.MusicDao
 import com.example.muplay.data.model.Music
 import com.example.muplay.util.CoverArtManager
+import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -26,7 +27,9 @@ import javax.inject.Singleton
 class MusicRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val musicDao: MusicDao,
-    private val dataStore: DataStore<Preferences>
+    private val dataStore: DataStore<Preferences>,
+    private val lazyAlbumRepository: Lazy<AlbumRepository>,
+    private val lazyArtistRepository: Lazy<ArtistRepository>
 ) {
     private val TAG = "MusicRepository"
     private val coverArtManager = CoverArtManager(context)
@@ -36,15 +39,15 @@ class MusicRepository @Inject constructor(
         private val CUSTOM_COVER_ARTS_KEY = stringPreferencesKey("custom_cover_arts")
     }
 
-    // ===== Operasi Database =====
+    // ===== Database Operations =====
     suspend fun refreshMusicLibrary() {
         try {
             val musicList = loadMusicFromDevice()
             if (musicList.isNotEmpty()) {
-                // Simpan custom cover arts yang sudah ada sebelum menghapus
+                // Save custom cover arts that already exist before deleting
                 val customCoverArts = getCustomCoverArts()
 
-                // Update musik dengan custom cover art jika ada
+                // Update music with custom cover art if any
                 val updatedMusicList = musicList.map { music ->
                     val customCoverPath = customCoverArts[music.id.toString()]
                     if (customCoverPath != null && customCoverPath.isNotEmpty()) {
@@ -56,6 +59,10 @@ class MusicRepository @Inject constructor(
 
                 musicDao.deleteAll()
                 musicDao.insertAll(updatedMusicList)
+
+                // Refresh albums and artists
+                lazyAlbumRepository.get().refreshAlbums(updatedMusicList)
+                lazyArtistRepository.get().refreshArtists(updatedMusicList)
 
                 Log.d(TAG, "Music library refreshed with ${updatedMusicList.size} songs")
             }
@@ -101,6 +108,31 @@ class MusicRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error updating music cover art", e)
+        }
+    }
+
+    // Update music metadata
+    suspend fun updateMusicMetadata(musicId: Long, title: String, artist: String, album: String) {
+        try {
+            // Get the current music
+            val music = getMusicById(musicId).first()
+
+            if (music != null) {
+                // Update the music metadata in the database
+                musicDao.updateMusicMetadata(musicId, title, artist, album)
+
+                // If artist or album has changed, refresh albums and artists
+                if (music.artist != artist || music.album != album) {
+                    // Get all music to refresh albums and artists
+                    val allMusic = getAllMusic().first()
+                    lazyAlbumRepository.get().refreshAlbums(allMusic)
+                    lazyArtistRepository.get().refreshArtists(allMusic)
+                }
+
+                Log.d(TAG, "Updated metadata for music ID $musicId: title=$title, artist=$artist, album=$album")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating music metadata", e)
         }
     }
 
@@ -206,8 +238,8 @@ class MusicRepository @Inject constructor(
             val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
             val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
-            val yearColumn = cursor.getColumnIndex(MediaStore.Audio.Media.YEAR)
-            val dateAddedColumn = cursor.getColumnIndex(MediaStore.Audio.Media.DATE_ADDED)
+            val yearColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+            val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)

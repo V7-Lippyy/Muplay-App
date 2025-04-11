@@ -3,7 +3,7 @@ package com.example.muplay.presentation.components
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -38,9 +38,9 @@ fun BottomNavigationBar(navController: NavController) {
             screen = Screen.History
         ),
         BottomNavItem(
-            title = "Playlist",
-            icon = Icons.Default.PlaylistPlay,
-            screen = Screen.Playlist
+            title = "Koleksi",
+            icon = Icons.Default.LibraryMusic, // Changed icon to be more appropriate for collection
+            screen = Screen.Collection // We'll rename this in the Screen class
         )
     )
 

@@ -8,12 +8,14 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
+import com.example.muplay.presentation.screens.collection.AlbumDetailScreen
+import com.example.muplay.presentation.screens.collection.ArtistDetailScreen
+import com.example.muplay.presentation.screens.collection.CollectionScreen
 import com.example.muplay.presentation.screens.history.HistoryScreen
 import com.example.muplay.presentation.screens.home.HomeScreen
 import com.example.muplay.presentation.screens.player.PlayerScreen
 import com.example.muplay.presentation.screens.player.PlayerViewModel
 import com.example.muplay.presentation.screens.playlist.PlaylistDetailScreen
-import com.example.muplay.presentation.screens.playlist.PlaylistScreen
 import com.example.muplay.presentation.screens.splash.SplashScreen
 
 @Composable
@@ -71,11 +73,17 @@ fun MuplayNavGraph(
             )
         }
 
-        // Playlist Screen
-        composable(Screen.Playlist.route) {
-            PlaylistScreen(
+        // Collection Screen
+        composable(Screen.Collection.route) {
+            CollectionScreen(
                 onPlaylistClick = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onAlbumClick = { albumName ->
+                    navController.navigate(Screen.AlbumDetail.createRoute(albumName))
+                },
+                onArtistClick = { artistName ->
+                    navController.navigate(Screen.ArtistDetail.createRoute(artistName))
                 }
             )
         }
@@ -97,6 +105,52 @@ fun MuplayNavGraph(
                 },
                 onMusicClick = { musicId ->
                     Log.d("Navigation", "Playing from playlist, musicId: $musicId")
+                    playerViewModel.playMusic(musicId)
+                    navController.navigate(Screen.Player.route)
+                }
+            )
+        }
+
+        // Album Detail Screen
+        composable(
+            route = Screen.AlbumDetail.route,
+            arguments = listOf(
+                navArgument("albumName") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val albumName = backStackEntry.arguments?.getString("albumName") ?: ""
+            AlbumDetailScreen(
+                albumName = albumName,
+                onBackClick = {
+                    navController.popBackStack()
+                },
+                onMusicClick = { musicId ->
+                    Log.d("Navigation", "Playing from album, musicId: $musicId")
+                    playerViewModel.playMusic(musicId)
+                    navController.navigate(Screen.Player.route)
+                }
+            )
+        }
+
+        // Artist Detail Screen
+        composable(
+            route = Screen.ArtistDetail.route,
+            arguments = listOf(
+                navArgument("artistName") {
+                    type = NavType.StringType
+                }
+            )
+        ) { backStackEntry ->
+            val artistName = backStackEntry.arguments?.getString("artistName") ?: ""
+            ArtistDetailScreen(
+                artistName = artistName,
+                onBackClick = {
+                    navController.popBackStack()
+                },
+                onMusicClick = { musicId ->
+                    Log.d("Navigation", "Playing from artist, musicId: $musicId")
                     playerViewModel.playMusic(musicId)
                     navController.navigate(Screen.Player.route)
                 }

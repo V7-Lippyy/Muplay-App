@@ -5,7 +5,11 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.muplay.data.local.database.MuplayDatabase
+import com.example.muplay.data.local.database.dao.AlbumDao
+import com.example.muplay.data.local.database.dao.ArtistDao
 import com.example.muplay.data.local.database.dao.HistoryDao
 import com.example.muplay.data.local.database.dao.MusicDao
 import com.example.muplay.data.local.database.dao.PlaylistDao
@@ -31,7 +35,10 @@ object AppModule {
             context,
             MuplayDatabase::class.java,
             "muplay_database"
-        ).build()
+        )
+            .addMigrations(MIGRATION_1_2)
+            .fallbackToDestructiveMigration() // Sebagai fallback jika migrasi gagal
+            .build()
     }
 
     @Singleton
@@ -54,7 +61,47 @@ object AppModule {
 
     @Singleton
     @Provides
+    fun provideAlbumDao(database: MuplayDatabase): AlbumDao {
+        return database.albumDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideArtistDao(database: MuplayDatabase): ArtistDao {
+        return database.artistDao()
+    }
+
+    @Singleton
+    @Provides
     fun provideDataStore(@ApplicationContext context: Context): DataStore<Preferences> {
         return context.dataStore
+    }
+
+    // Tambahkan migrasi untuk versi database
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Buat tabel album
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `album` (
+                    `name` TEXT NOT NULL PRIMARY KEY,
+                    `artist` TEXT NOT NULL,
+                    `coverArtPath` TEXT,
+                    `lastUpdated` INTEGER NOT NULL
+                )
+                """
+            )
+
+            // Buat tabel artist
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `artist` (
+                    `name` TEXT NOT NULL PRIMARY KEY,
+                    `coverArtPath` TEXT,
+                    `lastUpdated` INTEGER NOT NULL
+                )
+                """
+            )
+        }
     }
 }
