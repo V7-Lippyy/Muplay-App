@@ -42,4 +42,7 @@ interface MusicDao {
 
     @Query("SELECT COUNT(*) FROM music")
     fun getMusicCount(): Flow<Int>
+
+    @Query("UPDATE music SET title = :title, album = :album, artist = :artist WHERE id = :musicId")
+    suspend fun updateMusicMetadata(musicId: Long, title: String, artist: String, album: String)
 }
