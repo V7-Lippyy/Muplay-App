@@ -507,10 +507,15 @@ class MusicPlayerService : Service() {
                 player.seekToNext()
                 player.playWhenReady = true  // Ensure it plays after skipping
                 Log.d(TAG, "Skipped to next media item. Current index: ${player.currentMediaItemIndex}")
-                safelyUpdateNotification()
             } else {
-                Log.d(TAG, "No next item available")
+                // Jika sudah di lagu terakhir, kembali ke lagu pertama (wrap-around)
+                if (player.mediaItemCount > 0) {
+                    player.seekTo(0, 0)
+                    player.playWhenReady = true
+                    Log.d(TAG, "At last item, wrapped around to first track (index 0)")
+                }
             }
+            safelyUpdateNotification()
         } catch (e: Exception) {
             Log.e(TAG, "Error in skipToNext: ${e.message}", e)
         }
@@ -522,15 +527,23 @@ class MusicPlayerService : Service() {
             // If we're more than 3 seconds into the song, restart it instead of going to previous
             if (player.currentPosition > 3000) {
                 player.seekTo(0)
+                player.playWhenReady = true
                 Log.d(TAG, "Restarting current track because position > 3s")
             } else if (player.hasPreviousMediaItem()) {
                 player.seekToPrevious()
-                Log.d(TAG, "Skipped to previous media item. Current index: ${player.currentMediaItemIndex}")
                 player.playWhenReady = true  // Ensure it plays after skipping
+                Log.d(TAG, "Skipped to previous media item. Current index: ${player.currentMediaItemIndex}")
             } else {
-                // Jika tidak ada lagu sebelumnya, kembali ke awal lagu saat ini
-                player.seekTo(0)
-                Log.d(TAG, "No previous item available, restarting current track")
+                // Jika sudah di lagu pertama, kembali ke lagu terakhir (wrap-around)
+                if (player.mediaItemCount > 0) {
+                    player.seekTo(player.mediaItemCount - 1, 0)
+                    player.playWhenReady = true
+                    Log.d(TAG, "At first item, wrapped around to last track (index ${player.mediaItemCount - 1})")
+                } else {
+                    // Jika tidak ada lagu sebelumnya, kembali ke awal lagu saat ini
+                    player.seekTo(0)
+                    Log.d(TAG, "No tracks available, restarting current track")
+                }
             }
             safelyUpdateNotification()
         } catch (e: Exception) {
