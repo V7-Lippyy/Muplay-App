@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
@@ -25,10 +26,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,11 +55,25 @@ fun HistoryScreen(
     val historyItems by viewModel.historyList.collectAsState()
     val sortType by viewModel.sortType.collectAsState()
     val playlists by viewModel.playlists.collectAsState()
+    val statusMessage by viewModel.statusMessage.collectAsState()
+    val isCleaningUp by viewModel.isCleaningUp.collectAsState()
 
     var showSortMenu by remember { mutableStateOf(false) }
+    var showMoreMenu by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+    var showCleanupDialog by remember { mutableStateOf(false) }
     var currentlySelectedMusic by remember { mutableStateOf<Long?>(null) }
     var showPlaylistMenu by remember { mutableStateOf(false) }
+
+    // Snackbar untuk pesan status
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Tampilkan pesan status di snackbar jika ada
+    LaunchedEffect(statusMessage) {
+        if (statusMessage.isNotEmpty()) {
+            snackbarHostState.showSnackbar(statusMessage)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -67,9 +85,37 @@ fun HistoryScreen(
                         Icon(Icons.Default.Sort, contentDescription = "Urutkan")
                     }
 
-                    // Clear history button
-                    IconButton(onClick = { showClearDialog = true }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Hapus Riwayat")
+                    // More menu
+                    IconButton(onClick = { showMoreMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "Menu Lainnya")
+                    }
+
+                    // More dropdown menu
+                    DropdownMenu(
+                        expanded = showMoreMenu,
+                        onDismissRequest = { showMoreMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Bersihkan Duplikasi") },
+                            leadingIcon = {
+                                Icon(Icons.Default.FilterAlt, contentDescription = null)
+                            },
+                            onClick = {
+                                showCleanupDialog = true
+                                showMoreMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Hapus Semua Riwayat") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Delete, contentDescription = null)
+                            },
+                            onClick = {
+                                showClearDialog = true
+                                showMoreMenu = false
+                            }
+                        )
                     }
 
                     // Sort dropdown menu
@@ -163,7 +209,8 @@ fun HistoryScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         Box(modifier = Modifier.padding(innerPadding)) {
             if (historyItems.isEmpty()) {
@@ -266,6 +313,33 @@ fun HistoryScreen(
                     dismissButton = {
                         TextButton(
                             onClick = { showClearDialog = false }
+                        ) {
+                            Text("Batal")
+                        }
+                    }
+                )
+            }
+
+            // Cleanup duplicates dialog
+            if (showCleanupDialog) {
+                AlertDialog(
+                    onDismissRequest = { showCleanupDialog = false },
+                    title = { Text("Bersihkan Duplikasi") },
+                    text = { Text("Anda ingin membersihkan entri duplikat dalam riwayat? Ini akan menghapus entri duplikat yang berasal dari lagu yang sama dalam satu hari.") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                viewModel.cleanupDuplicateHistory()
+                                showCleanupDialog = false
+                            },
+                            enabled = !isCleaningUp
+                        ) {
+                            Text("Bersihkan")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = { showCleanupDialog = false }
                         ) {
                             Text("Batal")
                         }

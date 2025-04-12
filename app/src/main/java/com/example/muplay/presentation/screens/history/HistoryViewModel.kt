@@ -23,6 +23,13 @@ class HistoryViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository
 ) : ViewModel() {
 
+    // Status cleanup dan pesan status
+    private val _isCleaningUp = MutableStateFlow(false)
+    val isCleaningUp = _isCleaningUp.asStateFlow()
+
+    private val _statusMessage = MutableStateFlow("")
+    val statusMessage = _statusMessage.asStateFlow()
+
     // Sort type untuk riwayat
     enum class SortType {
         TIME_DESC,    // Terbaru ke terlama
@@ -73,6 +80,11 @@ class HistoryViewModel @Inject constructor(
         initialValue = emptyList()
     )
 
+    // Saat ViewModel diinisialisasi, bersihkan duplikasi secara otomatis
+    init {
+        cleanupDuplicateHistory(showMessage = false)
+    }
+
     // Ubah jenis pengurutan
     fun setSortType(type: SortType) {
         _sortType.value = type
@@ -82,6 +94,8 @@ class HistoryViewModel @Inject constructor(
     fun deleteHistoryEntry(historyId: Long) {
         viewModelScope.launch {
             historyRepository.deleteHistoryEntry(historyId)
+            _statusMessage.value = "Entri riwayat dihapus"
+            resetStatusMessageAfterDelay()
         }
     }
 
@@ -89,6 +103,8 @@ class HistoryViewModel @Inject constructor(
     fun addToPlaylist(playlistId: Long, musicId: Long) {
         viewModelScope.launch {
             playlistRepository.addMusicToPlaylist(playlistId, musicId)
+            _statusMessage.value = "Ditambahkan ke playlist"
+            resetStatusMessageAfterDelay()
         }
     }
 
@@ -96,6 +112,37 @@ class HistoryViewModel @Inject constructor(
     fun clearAllHistory() {
         viewModelScope.launch {
             historyRepository.clearHistory()
+            _statusMessage.value = "Semua riwayat telah dihapus"
+            resetStatusMessageAfterDelay()
+        }
+    }
+
+    // Bersihkan riwayat duplikat
+    fun cleanupDuplicateHistory(showMessage: Boolean = true) {
+        viewModelScope.launch {
+            try {
+                _isCleaningUp.value = true
+                historyRepository.removeDuplicateHistory()
+                if (showMessage) {
+                    _statusMessage.value = "Duplikasi riwayat dibersihkan"
+                    resetStatusMessageAfterDelay()
+                }
+            } catch (e: Exception) {
+                if (showMessage) {
+                    _statusMessage.value = "Gagal membersihkan duplikasi: ${e.message}"
+                    resetStatusMessageAfterDelay()
+                }
+            } finally {
+                _isCleaningUp.value = false
+            }
+        }
+    }
+
+    // Reset status message setelah beberapa detik
+    private fun resetStatusMessageAfterDelay() {
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(3000) // Tampilkan pesan selama 3 detik
+            _statusMessage.value = ""
         }
     }
 

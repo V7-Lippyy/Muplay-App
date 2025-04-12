@@ -1,6 +1,7 @@
 package com.example.muplay.data.model
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "playlist")
@@ -16,7 +17,8 @@ data class Playlist(
 // Relasi antara playlist dan musik
 @Entity(
     tableName = "playlist_music_cross_ref",
-    primaryKeys = ["playlistId", "musicId"]
+    primaryKeys = ["playlistId", "musicId"],
+    indices = [Index(value = ["musicId"])]
 )
 data class PlaylistMusicCrossRef(
     val playlistId: Long,

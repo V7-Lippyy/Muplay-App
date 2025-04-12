@@ -58,6 +58,10 @@ class MusicPlayerService : Service() {
     private var positionPollerJob: Job? = null
     private var isServiceActive = true
 
+    // Simpan ID musik terakhir yang diputar dan timestamp untuk mencegah duplikasi
+    private var lastPlayedMusicId: Long = -1
+    private var lastPlayedTimestamp: Long = 0
+
     // Inisialisasi CoverArtManager
     private lateinit var coverArtManager: CoverArtManager
 
@@ -83,6 +87,9 @@ class MusicPlayerService : Service() {
     companion object {
         const val STATE_PLAYING = 3
         const val STATE_PAUSED = 2
+
+        // Konstanta untuk anti-duplikasi riwayat
+        const val MIN_TIME_BETWEEN_HISTORY_ENTRIES = 10000L // 10 detik
     }
 
     private val playerListener = object : Player.Listener {
@@ -110,6 +117,14 @@ class MusicPlayerService : Service() {
                             musicId = music.id,
                             playDuration = music.duration
                         )
+
+                        // Membersihkan duplikasi riwayat secara periodik
+                        // Namun tidak setiap kali lagu selesai untuk menghindari overhead
+                        val currentTime = System.currentTimeMillis()
+                        if (currentTime - lastPlayedTimestamp > 60000) { // Bersihkan setiap menit
+                            lastPlayedTimestamp = currentTime
+                            historyRepository.removeDuplicateHistory()
+                        }
                     }
                 }
             } else if (playbackState == Player.STATE_READY) {
@@ -205,7 +220,6 @@ class MusicPlayerService : Service() {
         val music = _currentMusic.value ?: return
 
         // Load album art for notification
-        var albumArt: Bitmap? = null
         try {
             if (music.albumArtPath != null) {
                 serviceScope.launch(Dispatchers.IO) {
@@ -369,13 +383,33 @@ class MusicPlayerService : Service() {
                 _currentMusic.value = music
                 Log.d(TAG, "Current music updated to: ${music.title}")
 
-                // Tambahkan ke riwayat
-                serviceScope.launch {
-                    try {
-                        historyRepository.addToHistory(musicId)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error adding to history: ${e.message}", e)
+                // Cek apakah lagu ini baru saja diputar untuk menghindari duplikasi riwayat
+                val currentTime = System.currentTimeMillis()
+                val shouldAddToHistory = if (musicId == lastPlayedMusicId) {
+                    // Jika lagu yang sama, cek apakah sudah cukup lama sejak entri terakhir
+                    val timeDiff = currentTime - lastPlayedTimestamp
+                    timeDiff > MIN_TIME_BETWEEN_HISTORY_ENTRIES
+                } else {
+                    // Lagu berbeda, tambahkan ke riwayat
+                    true
+                }
+
+                if (shouldAddToHistory) {
+                    // Perbarui ID dan timestamp terakhir
+                    lastPlayedMusicId = musicId
+                    lastPlayedTimestamp = currentTime
+
+                    // Tambahkan ke riwayat
+                    serviceScope.launch {
+                        try {
+                            historyRepository.addToHistory(musicId)
+                            Log.d(TAG, "Added to history: $musicId")
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error adding to history: ${e.message}", e)
+                        }
                     }
+                } else {
+                    Log.d(TAG, "Skipped adding to history: $musicId (recently played)")
                 }
 
                 // Update notification
@@ -625,4 +659,3 @@ private fun Bundle.getMusicFromExtras(): Music {
         albumArtPath = getString(Constants.EXTRA_MUSIC_ART_URI)
     )
 }
-

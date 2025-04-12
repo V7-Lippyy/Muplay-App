@@ -23,7 +23,7 @@ import com.example.muplay.data.model.PlaylistMusicCrossRef
         Album::class,
         Artist::class
     ],
-    version = 2, // Increased version number due to schema change
+    version = 3, // Increased version number due to schema change
     exportSchema = false
 )
 abstract class MuplayDatabase : RoomDatabase() {
