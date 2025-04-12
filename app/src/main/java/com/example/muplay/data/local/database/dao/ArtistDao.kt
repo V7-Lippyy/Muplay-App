@@ -31,4 +31,10 @@ interface ArtistDao {
 
     @Query("UPDATE artist SET coverArtPath = :coverArtPath, lastUpdated = :timestamp WHERE name = :artistName")
     suspend fun updateArtistCover(artistName: String, coverArtPath: String?, timestamp: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM artist WHERE name = :artistName")
+    suspend fun deleteArtist(artistName: String)
+
+    @Query("DELETE FROM artist WHERE name = '' OR name = '<unknown>'")
+    suspend fun deleteInvalidArtists()
 }

@@ -7,10 +7,14 @@ import com.example.muplay.data.model.Artist
 import com.example.muplay.data.model.Playlist
 import com.example.muplay.data.repository.AlbumRepository
 import com.example.muplay.data.repository.ArtistRepository
+import com.example.muplay.data.repository.MusicRepository
 import com.example.muplay.data.repository.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -19,8 +23,17 @@ import javax.inject.Inject
 class CollectionViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val albumRepository: AlbumRepository,
-    private val artistRepository: ArtistRepository
+    private val artistRepository: ArtistRepository,
+    private val musicRepository: MusicRepository
 ) : ViewModel() {
+
+    // Status loading untuk refresh
+    private val _isRefreshing = MutableStateFlow(false)
+    val isRefreshing: StateFlow<Boolean> = _isRefreshing.asStateFlow()
+
+    // Status refresh yang menampilkan pesan jika berhasil
+    private val _refreshMessage = MutableStateFlow<String?>(null)
+    val refreshMessage: StateFlow<String?> = _refreshMessage.asStateFlow()
 
     // Playlists data
     val allPlaylists = playlistRepository.getAllPlaylistsWithMusic()
@@ -45,6 +58,39 @@ class CollectionViewModel @Inject constructor(
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    // Force refresh collections
+    fun forceRefreshCollections() {
+        viewModelScope.launch {
+            try {
+                _isRefreshing.value = true
+
+                // Ambil semua musik
+                val allMusic = musicRepository.getAllMusic().first()
+
+                if (allMusic.isNotEmpty()) {
+                    // Force refresh collections
+                    albumRepository.refreshAlbums(allMusic)
+                    artistRepository.refreshArtists(allMusic)
+
+                    // Set success message
+                    _refreshMessage.value = "Koleksi berhasil diperbarui"
+                } else {
+                    _refreshMessage.value = "Tidak ada musik ditemukan"
+                }
+            } catch (e: Exception) {
+                _refreshMessage.value = "Gagal memperbarui koleksi: ${e.message}"
+            } finally {
+                _isRefreshing.value = false
+
+                // Reset message after 3 seconds
+                launch {
+                    kotlinx.coroutines.delay(3000)
+                    _refreshMessage.value = null
+                }
+            }
+        }
+    }
 
     // Create playlist
     fun createPlaylist(name: String) {

@@ -32,4 +32,10 @@ interface AlbumDao {
 
     @Query("UPDATE album SET coverArtPath = :coverArtPath, lastUpdated = :timestamp WHERE name = :albumName")
     suspend fun updateAlbumCover(albumName: String, coverArtPath: String?, timestamp: Long = System.currentTimeMillis())
+
+    @Query("DELETE FROM album WHERE name = :albumName")
+    suspend fun deleteAlbum(albumName: String)
+
+    @Query("DELETE FROM album WHERE name = '' OR name = '<unknown>'")
+    suspend fun deleteInvalidAlbums()
 }

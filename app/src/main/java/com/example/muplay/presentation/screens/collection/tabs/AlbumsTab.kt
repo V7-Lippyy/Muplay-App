@@ -7,9 +7,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +28,7 @@ import com.example.muplay.presentation.screens.collection.CollectionViewModel
 @Composable
 fun AlbumsTab(
     onAlbumClick: (String) -> Unit,
+    isRefreshing: Boolean = false,
     viewModel: CollectionViewModel = hiltViewModel()
 ) {
     val albums by viewModel.allAlbums.collectAsState()
@@ -50,7 +53,7 @@ fun AlbumsTab(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = "Album akan muncul di sini saat Anda menambahkan musik",
+                    text = "Album akan muncul di sini saat Anda menambahkan musik atau tekan tombol Refresh",
                     style = MaterialTheme.typography.bodyLarge,
                     textAlign = TextAlign.Center
                 )
@@ -69,6 +72,15 @@ fun AlbumsTab(
                     )
                 }
             }
+        }
+
+        // Loading indicator
+        if (isRefreshing) {
+            CircularProgressIndicator(
+                modifier = Modifier
+                    .size(40.dp)
+                    .align(Alignment.Center)
+            )
         }
     }
 }

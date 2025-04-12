@@ -7,8 +7,10 @@ import com.example.muplay.data.model.Album
 import com.example.muplay.data.model.Music
 import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,13 +47,23 @@ class AlbumRepository @Inject constructor(
     // Create or update album
     suspend fun createOrUpdateAlbum(album: Album) {
         try {
-            // Perbaikan: Tidak menggunakan hashCode() untuk memeriksa keberadaan album
+            // Periksa apakah album sudah ada
             val existingAlbum = albumDao.getAlbumByName(album.name).firstOrNull()
+
             if (existingAlbum == null) {
+                // Jika album tidak ada, tambahkan baru
                 albumDao.insertAlbum(album)
                 Log.d(TAG, "Created new album: ${album.name}")
             } else {
-                albumDao.updateAlbum(album)
+                // Jika album sudah ada, perbarui
+                // Pertahankan coverArtPath yang ada jika yang baru null
+                val updatedAlbum = if (album.coverArtPath == null && existingAlbum.coverArtPath != null) {
+                    album.copy(coverArtPath = existingAlbum.coverArtPath)
+                } else {
+                    album
+                }
+
+                albumDao.updateAlbum(updatedAlbum)
                 Log.d(TAG, "Updated album: ${album.name}")
             }
         } catch (e: Exception) {
@@ -62,19 +74,28 @@ class AlbumRepository @Inject constructor(
     // Refresh all albums from the music library
     suspend fun refreshAlbums(musicList: List<Music>) {
         try {
-            // Group songs by album
+            // Backup semua album yang ada
+            val existingAlbums = withContext(Dispatchers.IO) {
+                albumDao.getAllAlbums().firstOrNull() ?: emptyList()
+            }
+
+            // Group songs by album - filter out empty or "<unknown>" albums
             val albumGroups = musicList
-                .filter { it.album.isNotBlank() } // Hanya proses album yang memiliki nama
-                .groupBy { it.album }
+                .filter { it.album.isNotBlank() && it.album != "<unknown>" }
+                .groupBy { it.album.trim() }
 
             Log.d(TAG, "Found ${albumGroups.size} albums to process")
 
             // Create or update albums
             albumGroups.forEach { (albumName, songs) ->
-                if (albumName.isNotBlank()) {
+                if (albumName.isNotBlank() && albumName != "<unknown>") {
                     // Get the artist - use the most common artist in the album
-                    val artistCounts = songs.groupBy { it.artist }
+                    val artistCounts = songs
+                        .map { it.artist.trim() }
+                        .filter { it.isNotBlank() && it != "<unknown>" }
+                        .groupBy { it }
                         .mapValues { it.value.size }
+
                     val mostCommonArtist = artistCounts.maxByOrNull { it.value }?.key ?: ""
 
                     // Get the album art from the first song that has it
@@ -88,6 +109,14 @@ class AlbumRepository @Inject constructor(
 
                     createOrUpdateAlbum(album)
                 }
+            }
+
+            // Cek apakah ada album yang tidak valid (nama kosong) dan hapus
+            val invalidAlbums = existingAlbums.filter { it.name.isBlank() || it.name == "<unknown>" }
+            for (invalidAlbum in invalidAlbums) {
+                // Hapus album tidak valid
+                albumDao.deleteAlbum(invalidAlbum.name)
+                Log.d(TAG, "Deleted invalid album: ${invalidAlbum.name}")
             }
 
             Log.d(TAG, "Refreshed ${albumGroups.size} albums")

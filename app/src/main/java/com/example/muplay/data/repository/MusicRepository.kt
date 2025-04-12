@@ -18,9 +18,11 @@ import com.example.muplay.data.model.Music
 import com.example.muplay.util.CoverArtManager
 import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -38,6 +40,7 @@ class MusicRepository @Inject constructor(
     companion object {
         private val DARK_THEME_KEY = booleanPreferencesKey("dark_theme")
         private val CUSTOM_COVER_ARTS_KEY = stringPreferencesKey("custom_cover_arts")
+        private val EDITED_METADATA_KEY = stringPreferencesKey("edited_metadata")
     }
 
     // ===== Database Operations =====
@@ -48,14 +51,33 @@ class MusicRepository @Inject constructor(
                 // Save custom cover arts that already exist before deleting
                 val customCoverArts = getCustomCoverArts()
 
-                // Update music with custom cover art if any
+                // Get edited metadata
+                val editedMetadata = getEditedMetadata()
+
+                // Update music with custom cover art and edited metadata if any
                 val updatedMusicList = musicList.map { music ->
+                    var updatedMusic = music
+
+                    // Apply custom cover art if exists
                     val customCoverPath = customCoverArts[music.id.toString()]
                     if (customCoverPath != null && customCoverPath.isNotEmpty()) {
-                        music.copy(albumArtPath = customCoverPath)
-                    } else {
-                        music
+                        updatedMusic = updatedMusic.copy(albumArtPath = customCoverPath)
                     }
+
+                    // Apply edited metadata if exists
+                    val metadata = editedMetadata[music.id.toString()]
+                    if (metadata != null) {
+                        val parts = metadata.split("|")
+                        if (parts.size >= 3) {
+                            updatedMusic = updatedMusic.copy(
+                                title = parts[0],
+                                artist = parts[1],
+                                album = parts[2]
+                            )
+                        }
+                    }
+
+                    updatedMusic
                 }
 
                 musicDao.deleteAll()
@@ -122,15 +144,26 @@ class MusicRepository @Inject constructor(
                 // 1. Update the music metadata in the database
                 musicDao.updateMusicMetadata(musicId, title, artist, album)
 
-                // 2. Update the MediaStore (External content provider)
-                updateMediaStoreMetadata(musicId, title, artist, album)
+                // 2. Save edited metadata to preferences
+                saveEditedMetadata(musicId.toString(), "$title|$artist|$album")
 
-                // 3. If artist or album has changed, refresh albums and artists
+                // 3. Update the MediaStore (External content provider)
+                val success = updateMediaStoreMetadata(musicId, title, artist, album)
+                Log.d(TAG, "MediaStore update status: $success")
+
+                // 4. Refresh the music object to ensure it's updated
+                musicDao.getMusicById(musicId).first()?.let { updatedMusic ->
+                    Log.d(TAG, "Updated music in database: ${updatedMusic.title}, ${updatedMusic.artist}, ${updatedMusic.album}")
+                }
+
+                // 5. If artist or album has changed, refresh albums and artists
                 if (music.artist != artist || music.album != album) {
                     // Get all music to refresh albums and artists
                     val allMusic = getAllMusic().first()
-                    lazyAlbumRepository.get().refreshAlbums(allMusic)
-                    lazyArtistRepository.get().refreshArtists(allMusic)
+                    withContext(Dispatchers.IO) {
+                        lazyAlbumRepository.get().refreshAlbums(allMusic)
+                        lazyArtistRepository.get().refreshArtists(allMusic)
+                    }
                 }
 
                 Log.d(TAG, "Updated metadata for music ID $musicId: title=$title, artist=$artist, album=$album")
@@ -140,32 +173,76 @@ class MusicRepository @Inject constructor(
         }
     }
 
-    // Update the metadata in MediaStore (untuk persistensi)
-    private suspend fun updateMediaStoreMetadata(musicId: Long, title: String, artist: String, album: String) {
-        val contentResolver = context.contentResolver
+    // Save edited metadata to preferences for persistence
+    private suspend fun saveEditedMetadata(musicId: String, metadata: String) {
         try {
-            // Create content values with the updated metadata
-            val values = ContentValues().apply {
-                put(MediaStore.Audio.Media.TITLE, title)
-                put(MediaStore.Audio.Media.ARTIST, artist)
-                put(MediaStore.Audio.Media.ALBUM, album)
-                // For displaying in the UI correctly
-                put(MediaStore.Audio.Media.DISPLAY_NAME, title)
+            val editedMetadata = getEditedMetadata().toMutableMap()
+            editedMetadata[musicId] = metadata
+
+            // Convert to JSON string
+            val jsonString = editedMetadata.entries.joinToString(separator = ",") {
+                "\"${it.key}\":\"${it.value}\""
+            }
+            val jsonResult = "{$jsonString}"
+
+            // Save to preferences
+            dataStore.edit { preferences ->
+                preferences[EDITED_METADATA_KEY] = jsonResult
             }
 
-            // URI for the specific music track
-            val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, musicId)
-
-            // Update the MediaStore
-            val updated = contentResolver.update(uri, values, null, null)
-            if (updated > 0) {
-                Log.d(TAG, "MediaStore updated successfully for music ID: $musicId")
-            } else {
-                Log.w(TAG, "MediaStore update failed for music ID: $musicId")
-            }
-
+            Log.d(TAG, "Saved edited metadata to preferences for music ID $musicId: $metadata")
         } catch (e: Exception) {
-            Log.e(TAG, "Error updating MediaStore metadata", e)
+            Log.e(TAG, "Error saving edited metadata to preferences", e)
+        }
+    }
+
+    // Get edited metadata from preferences
+    private suspend fun getEditedMetadata(): Map<String, String> {
+        return try {
+            val jsonString = dataStore.data.map { preferences ->
+                preferences[EDITED_METADATA_KEY] ?: "{}"
+            }.first()
+
+            parseJsonToMap(jsonString)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting edited metadata from preferences", e)
+            emptyMap()
+        }
+    }
+
+    // Update the metadata in MediaStore
+    private suspend fun updateMediaStoreMetadata(musicId: Long, title: String, artist: String, album: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            val contentResolver = context.contentResolver
+            try {
+                // Create content values with the updated metadata
+                val values = ContentValues().apply {
+                    put(MediaStore.Audio.Media.TITLE, title)
+                    put(MediaStore.Audio.Media.ARTIST, artist)
+                    put(MediaStore.Audio.Media.ALBUM, album)
+                    // For displaying in the UI correctly
+                    put(MediaStore.Audio.Media.DISPLAY_NAME, title)
+                }
+
+                // URI for the specific music track
+                val uri = ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, musicId)
+
+                Log.d(TAG, "Attempting to update MediaStore for URI: $uri")
+
+                // Update the MediaStore
+                val updated = contentResolver.update(uri, values, null, null)
+                if (updated > 0) {
+                    Log.d(TAG, "MediaStore updated successfully for music ID: $musicId")
+                    true
+                } else {
+                    Log.w(TAG, "MediaStore update failed for music ID: $musicId")
+                    false
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating MediaStore metadata", e)
+                false
+            }
         }
     }
 
@@ -199,27 +276,31 @@ class MusicRepository @Inject constructor(
                 preferences[CUSTOM_COVER_ARTS_KEY] ?: "{}"
             }.first()
 
-            // Simple JSON parsing (for a more robust solution you might want to use a JSON library)
-            if (jsonString == "{}") {
-                emptyMap()
-            } else {
-                val result = mutableMapOf<String, String>()
-                val content = jsonString.trim().removeSurrounding("{", "}")
-                if (content.isNotEmpty()) {
-                    content.split(",").forEach { pair ->
-                        val keyValue = pair.split(":")
-                        if (keyValue.size == 2) {
-                            val key = keyValue[0].trim().removeSurrounding("\"")
-                            val value = keyValue[1].trim().removeSurrounding("\"")
-                            result[key] = value
-                        }
-                    }
-                }
-                result
-            }
+            parseJsonToMap(jsonString)
         } catch (e: Exception) {
             Log.e(TAG, "Error getting custom cover arts from preferences", e)
             emptyMap()
+        }
+    }
+
+    // Helper function to parse JSON string to Map
+    private fun parseJsonToMap(jsonString: String): Map<String, String> {
+        return if (jsonString == "{}") {
+            emptyMap()
+        } else {
+            val result = mutableMapOf<String, String>()
+            val content = jsonString.trim().removeSurrounding("{", "}")
+            if (content.isNotEmpty()) {
+                content.split(",").forEach { pair ->
+                    val keyValue = pair.split(":", limit = 2)
+                    if (keyValue.size == 2) {
+                        val key = keyValue[0].trim().removeSurrounding("\"")
+                        val value = keyValue[1].trim().removeSurrounding("\"")
+                        result[key] = value
+                    }
+                }
+            }
+            result
         }
     }
 
@@ -233,6 +314,22 @@ class MusicRepository @Inject constructor(
     suspend fun setDarkThemePreference(isDarkTheme: Boolean) {
         dataStore.edit { preferences ->
             preferences[DARK_THEME_KEY] = isDarkTheme
+        }
+    }
+
+    // Manually force refresh album and artist data
+    suspend fun forceRefreshCollections() {
+        try {
+            val allMusic = getAllMusic().first()
+            if (allMusic.isNotEmpty()) {
+                withContext(Dispatchers.IO) {
+                    lazyAlbumRepository.get().refreshAlbums(allMusic)
+                    lazyArtistRepository.get().refreshArtists(allMusic)
+                }
+                Log.d(TAG, "Force refreshed album and artist collections")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error force refreshing collections", e)
         }
     }
 
@@ -251,7 +348,8 @@ class MusicRepository @Inject constructor(
             MediaStore.Audio.Media.DURATION,
             MediaStore.Audio.Media.ALBUM_ID,
             MediaStore.Audio.Media.YEAR,
-            MediaStore.Audio.Media.DATE_ADDED
+            MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.TRACK
         )
 
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} = ?"
@@ -273,14 +371,23 @@ class MusicRepository @Inject constructor(
             val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
             val yearColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+            val trackNumberColumn = try {
+                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
+            } catch (e: Exception) {
+                -1
+            }
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idColumn)
                 val title = cursor.getString(titleColumn)
-                val artist = cursor.getString(artistColumn)
-                val album = cursor.getString(albumColumn)
+                var artist = cursor.getString(artistColumn)
+                var album = cursor.getString(albumColumn)
                 val duration = cursor.getLong(durationColumn)
                 val albumId = cursor.getLong(albumIdColumn)
+
+                // Handle <unknown> values
+                if (artist == "<unknown>") artist = ""
+                if (album == "<unknown>") album = ""
 
                 val year = if (yearColumn != -1) {
                     try { cursor.getInt(yearColumn) } catch (e: Exception) { null }
@@ -288,6 +395,10 @@ class MusicRepository @Inject constructor(
 
                 val dateAdded = if (dateAddedColumn != -1) {
                     try { cursor.getLong(dateAddedColumn) } catch (e: Exception) { null }
+                } else null
+
+                val trackNumber = if (trackNumberColumn != -1) {
+                    try { cursor.getInt(trackNumberColumn) } catch (e: Exception) { null }
                 } else null
 
                 val contentUri = ContentUris.withAppendedId(
@@ -313,7 +424,7 @@ class MusicRepository @Inject constructor(
                     genre = genre,
                     year = year,
                     dateAdded = dateAdded,
-                    trackNumber = getTrackNumber(contentResolver, id)
+                    trackNumber = trackNumber
                 )
 
                 musicList.add(music)
@@ -321,36 +432,6 @@ class MusicRepository @Inject constructor(
         }
 
         return musicList
-    }
-
-    // Mendapatkan nomor track pada album (untuk sortir yang lebih baik di album view)
-    private fun getTrackNumber(contentResolver: ContentResolver, audioId: Long): Int? {
-        try {
-            val uri = ContentUris.withAppendedId(
-                MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, audioId
-            )
-            val projection = arrayOf(MediaStore.Audio.Media.TRACK)
-
-            contentResolver.query(
-                uri,
-                projection,
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val trackColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
-                    return try {
-                        cursor.getInt(trackColumn)
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting track number", e)
-        }
-        return null
     }
 
     private fun getGenreFromAudio(contentResolver: ContentResolver, audioId: Long): String? {
