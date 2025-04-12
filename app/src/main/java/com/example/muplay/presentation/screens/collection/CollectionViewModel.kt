@@ -59,6 +59,11 @@ class CollectionViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    init {
+        // Bersihkan koleksi kosong saat pertama kali load
+        cleanupEmptyCollections()
+    }
+
     // Force refresh collections
     fun forceRefreshCollections() {
         viewModelScope.launch {
@@ -72,6 +77,9 @@ class CollectionViewModel @Inject constructor(
                     // Force refresh collections
                     albumRepository.refreshAlbums(allMusic)
                     artistRepository.refreshArtists(allMusic)
+
+                    // Setelah refresh, bersihkan koleksi yang kosong
+                    cleanupEmptyCollections()
 
                     // Set success message
                     _refreshMessage.value = "Koleksi berhasil diperbarui"
@@ -88,6 +96,24 @@ class CollectionViewModel @Inject constructor(
                     kotlinx.coroutines.delay(3000)
                     _refreshMessage.value = null
                 }
+            }
+        }
+    }
+
+    // Membersihkan koleksi yang kosong
+    private fun cleanupEmptyCollections() {
+        viewModelScope.launch {
+            try {
+                // Bersihkan album kosong
+                albumRepository.cleanupEmptyAlbums()
+
+                // Bersihkan artist kosong
+                artistRepository.cleanupEmptyArtists()
+
+                // Bersihkan playlist kosong (terutama yang bernama "Download")
+                playlistRepository.cleanupEmptyPlaylists()
+            } catch (e: Exception) {
+                // Tangani error dengan silent (tidak perlu tampilkan ke user)
             }
         }
     }

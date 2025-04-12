@@ -74,11 +74,6 @@ class AlbumRepository @Inject constructor(
     // Refresh all albums from the music library
     suspend fun refreshAlbums(musicList: List<Music>) {
         try {
-            // Backup semua album yang ada
-            val existingAlbums = withContext(Dispatchers.IO) {
-                albumDao.getAllAlbums().firstOrNull() ?: emptyList()
-            }
-
             // Group songs by album - filter out empty or "<unknown>" albums
             val albumGroups = musicList
                 .filter { it.album.isNotBlank() && it.album != "<unknown>" }
@@ -86,7 +81,21 @@ class AlbumRepository @Inject constructor(
 
             Log.d(TAG, "Found ${albumGroups.size} albums to process")
 
-            // Create or update albums
+            // Get all existing albums first
+            val existingAlbums = withContext(Dispatchers.IO) {
+                albumDao.getAllAlbums().firstOrNull() ?: emptyList()
+            }
+
+            // Get song counts for each album to check which ones are empty
+            val albumsWithCount = mutableMapOf<String, Int>()
+            for (album in existingAlbums) {
+                val count = withContext(Dispatchers.IO) {
+                    albumDao.getSongCountForAlbum(album.name).firstOrNull() ?: 0
+                }
+                albumsWithCount[album.name] = count
+            }
+
+            // Create or update albums from music list
             albumGroups.forEach { (albumName, songs) ->
                 if (albumName.isNotBlank() && albumName != "<unknown>") {
                     // Get the artist - use the most common artist in the album
@@ -108,20 +117,61 @@ class AlbumRepository @Inject constructor(
                     )
 
                     createOrUpdateAlbum(album)
+
+                    // Update count in our tracking map
+                    albumsWithCount[albumName] = songs.size
                 }
             }
 
-            // Cek apakah ada album yang tidak valid (nama kosong) dan hapus
-            val invalidAlbums = existingAlbums.filter { it.name.isBlank() || it.name == "<unknown>" }
-            for (invalidAlbum in invalidAlbums) {
-                // Hapus album tidak valid
-                albumDao.deleteAlbum(invalidAlbum.name)
-                Log.d(TAG, "Deleted invalid album: ${invalidAlbum.name}")
+            // Find albums to delete (empty or invalid)
+            // 1. Find albums not in current music list (they will be empty)
+            val albumsToDelete = albumsWithCount.filter { (name, count) ->
+                count == 0 || // Album is empty
+                        name.isBlank() || // Album name is blank
+                        name == "<unknown>" // Album is unknown
+            }.keys
+
+            // 2. Delete albums that are empty or invalid
+            if (albumsToDelete.isNotEmpty()) {
+                Log.d(TAG, "Deleting ${albumsToDelete.size} empty or invalid albums: $albumsToDelete")
+
+                for (albumName in albumsToDelete) {
+                    albumDao.deleteAlbum(albumName)
+                }
             }
 
-            Log.d(TAG, "Refreshed ${albumGroups.size} albums")
+            Log.d(TAG, "Refreshed ${albumGroups.size} albums, deleted ${albumsToDelete.size} empty albums")
         } catch (e: Exception) {
             Log.e(TAG, "Error refreshing albums", e)
+        }
+    }
+
+    // Clean up empty albums (can be called periodically or on demand)
+    suspend fun cleanupEmptyAlbums() {
+        try {
+            // Get all albums
+            val allAlbums = withContext(Dispatchers.IO) {
+                albumDao.getAllAlbums().firstOrNull() ?: emptyList()
+            }
+
+            // Check each album for song count
+            var emptyAlbumsCount = 0
+            for (album in allAlbums) {
+                val songCount = withContext(Dispatchers.IO) {
+                    albumDao.getSongCountForAlbum(album.name).firstOrNull() ?: 0
+                }
+
+                // If album is empty, delete it
+                if (songCount == 0 || album.name.isBlank() || album.name == "<unknown>") {
+                    albumDao.deleteAlbum(album.name)
+                    emptyAlbumsCount++
+                    Log.d(TAG, "Deleted empty album: ${album.name}")
+                }
+            }
+
+            Log.d(TAG, "Cleanup completed: deleted $emptyAlbumsCount empty albums")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up empty albums", e)
         }
     }
 }

@@ -74,11 +74,6 @@ class ArtistRepository @Inject constructor(
     // Refresh all artists from the music library
     suspend fun refreshArtists(musicList: List<Music>) {
         try {
-            // Backup semua artist yang ada
-            val existingArtists = withContext(Dispatchers.IO) {
-                artistDao.getAllArtists().firstOrNull() ?: emptyList()
-            }
-
             // Group songs by artist - filter out empty or "<unknown>" artists
             val artistGroups = musicList
                 .filter { it.artist.isNotBlank() && it.artist != "<unknown>" }
@@ -86,7 +81,21 @@ class ArtistRepository @Inject constructor(
 
             Log.d(TAG, "Found ${artistGroups.size} artists to process")
 
-            // Create or update artists
+            // Get all existing artists first
+            val existingArtists = withContext(Dispatchers.IO) {
+                artistDao.getAllArtists().firstOrNull() ?: emptyList()
+            }
+
+            // Get song counts for each artist to check which ones are empty
+            val artistsWithCount = mutableMapOf<String, Int>()
+            for (artist in existingArtists) {
+                val count = withContext(Dispatchers.IO) {
+                    artistDao.getSongCountForArtist(artist.name).firstOrNull() ?: 0
+                }
+                artistsWithCount[artist.name] = count
+            }
+
+            // Create or update artists from music list
             artistGroups.forEach { (artistName, songs) ->
                 if (artistName.isNotBlank() && artistName != "<unknown>") {
                     // Get the album art from the first song that has it to use as artist image
@@ -98,20 +107,61 @@ class ArtistRepository @Inject constructor(
                     )
 
                     createOrUpdateArtist(artist)
+
+                    // Update count in our tracking map
+                    artistsWithCount[artistName] = songs.size
                 }
             }
 
-            // Cek apakah ada artist yang tidak valid (nama kosong) dan hapus
-            val invalidArtists = existingArtists.filter { it.name.isBlank() || it.name == "<unknown>" }
-            for (invalidArtist in invalidArtists) {
-                // Hapus artist tidak valid
-                artistDao.deleteArtist(invalidArtist.name)
-                Log.d(TAG, "Deleted invalid artist: ${invalidArtist.name}")
+            // Find artists to delete (empty or invalid)
+            // 1. Find artists not in current music list (they will be empty)
+            val artistsToDelete = artistsWithCount.filter { (name, count) ->
+                count == 0 || // Artist is empty
+                        name.isBlank() || // Artist name is blank
+                        name == "<unknown>" // Artist is unknown
+            }.keys
+
+            // 2. Delete artists that are empty or invalid
+            if (artistsToDelete.isNotEmpty()) {
+                Log.d(TAG, "Deleting ${artistsToDelete.size} empty or invalid artists: $artistsToDelete")
+
+                for (artistName in artistsToDelete) {
+                    artistDao.deleteArtist(artistName)
+                }
             }
 
-            Log.d(TAG, "Refreshed ${artistGroups.size} artists")
+            Log.d(TAG, "Refreshed ${artistGroups.size} artists, deleted ${artistsToDelete.size} empty artists")
         } catch (e: Exception) {
             Log.e(TAG, "Error refreshing artists", e)
+        }
+    }
+
+    // Clean up empty artists (can be called periodically or on demand)
+    suspend fun cleanupEmptyArtists() {
+        try {
+            // Get all artists
+            val allArtists = withContext(Dispatchers.IO) {
+                artistDao.getAllArtists().firstOrNull() ?: emptyList()
+            }
+
+            // Check each artist for song count
+            var emptyArtistsCount = 0
+            for (artist in allArtists) {
+                val songCount = withContext(Dispatchers.IO) {
+                    artistDao.getSongCountForArtist(artist.name).firstOrNull() ?: 0
+                }
+
+                // If artist is empty, delete it
+                if (songCount == 0 || artist.name.isBlank() || artist.name == "<unknown>") {
+                    artistDao.deleteArtist(artist.name)
+                    emptyArtistsCount++
+                    Log.d(TAG, "Deleted empty artist: ${artist.name}")
+                }
+            }
+
+            Log.d(TAG, "Cleanup completed: deleted $emptyArtistsCount empty artists")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up empty artists", e)
         }
     }
 }

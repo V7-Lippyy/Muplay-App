@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.repository.AlbumRepository
 import com.example.muplay.data.repository.ArtistRepository
 import com.example.muplay.data.repository.MusicRepository
+import com.example.muplay.data.repository.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
@@ -16,7 +17,8 @@ import javax.inject.Inject
 class SplashViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
     private val albumRepository: AlbumRepository,
-    private val artistRepository: ArtistRepository
+    private val artistRepository: ArtistRepository,
+    private val playlistRepository: PlaylistRepository
 ) : ViewModel() {
 
     // Tema gelap atau terang
@@ -46,6 +48,11 @@ class SplashViewModel @Inject constructor(
             if (allMusic.isNotEmpty()) {
                 albumRepository.refreshAlbums(allMusic)
                 artistRepository.refreshArtists(allMusic)
+
+                // Bersihkan koleksi kosong
+                albumRepository.cleanupEmptyAlbums()
+                artistRepository.cleanupEmptyArtists()
+                playlistRepository.cleanupEmptyPlaylists()
             }
         } catch (e: Exception) {
             // Log error tapi tetap lanjutkan aplikasi
