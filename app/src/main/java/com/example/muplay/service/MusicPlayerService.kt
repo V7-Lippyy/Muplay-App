@@ -402,9 +402,10 @@ class MusicPlayerService : Service() {
                     lastPlayedMusicId = musicId
                     lastPlayedTimestamp = currentTime
 
-                    // Add to history (limited to MAX_HISTORY_ENTRIES)
+                    // IMPORTANT: Immediately add to history (don't delay)
                     serviceScope.launch {
                         try {
+                            // Make sure this runs even if app is closing
                             historyRepository.addToHistory(musicId)
                             Log.d(TAG, "Added to history: $musicId")
                         } catch (e: Exception) {

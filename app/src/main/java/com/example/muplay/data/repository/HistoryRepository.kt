@@ -15,6 +15,9 @@ class HistoryRepository @Inject constructor(
     private val TAG = "HistoryRepository"
     private val MAX_HISTORY_ENTRIES = 6
 
+    /**
+     * Add a song to the history. This method ensures persistence by immediately writing to the database.
+     */
     suspend fun addToHistory(musicId: Long, playDuration: Long? = null) {
         try {
             // Check if this song was recently played (within last 10 seconds)
@@ -31,10 +34,12 @@ class HistoryRepository @Inject constructor(
                     playedAt = System.currentTimeMillis(),
                     playDuration = playDuration
                 )
-                historyDao.insertHistory(history)
-                Log.d(TAG, "Added new history for music ID: $musicId")
 
-                // Check if we need to remove old entries to maintain the limit
+                // Insert the history entry and get its ID
+                val id = historyDao.insertHistory(history)
+                Log.d(TAG, "Added new history for music ID: $musicId with history ID: $id")
+
+                // After inserting, check if we need to remove old entries
                 maintainHistoryLimit()
             } else {
                 // If the song was recently played, just update the last entry
@@ -45,7 +50,7 @@ class HistoryRepository @Inject constructor(
                         System.currentTimeMillis(),
                         playDuration ?: it.playDuration
                     )
-                    Log.d(TAG, "Updated recent history for music ID: $musicId")
+                    Log.d(TAG, "Updated recent history for music ID: $musicId with history ID: ${it.id}")
                 }
             }
         } catch (e: Exception) {
@@ -53,7 +58,9 @@ class HistoryRepository @Inject constructor(
         }
     }
 
-    // Maintain only MAX_HISTORY_ENTRIES (6) in the history table
+    /**
+     * Maintain only MAX_HISTORY_ENTRIES (6) in the history table by removing oldest entries
+     */
     private suspend fun maintainHistoryLimit() {
         try {
             val count = historyDao.getHistoryCount()

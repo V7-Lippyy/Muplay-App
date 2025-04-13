@@ -32,14 +32,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
-import com.example.muplay.R
-import com.example.muplay.data.model.Music
 import com.example.muplay.presentation.components.HighlightCard
 import com.example.muplay.presentation.components.MusicCard
-import com.example.muplay.presentation.components.RecentlyPlayedCard
+import com.example.muplay.presentation.components.RecentlyPlayedSection
 import com.example.muplay.presentation.components.SectionTitle
 import com.example.muplay.presentation.components.TotalSongsCard
 import com.example.muplay.presentation.screens.player.PlayerViewModel
@@ -190,33 +187,40 @@ fun HomeScreen(
             // Main content
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(16.dp)
+                contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                // Highlight cards
-                item {
-                    LazyRow {
-                        // Only show highlight cards if we're not filtering or searching
-                        if (searchQuery.isEmpty() && selectedArtist == null && selectedGenre == null) {
-                            // Last played song
-                            if (recentlyPlayed.isNotEmpty()) {
-                                item {
-                                    val lastPlayedMusic = viewModel.getMusicFromHistory(recentlyPlayed.first())
-                                    RecentlyPlayedCard(
-                                        music = lastPlayedMusic,
-                                        onClick = {
-                                            try {
-                                                // Play music first, then navigate
-                                                playerViewModel.playMusic(lastPlayedMusic.id)
-                                                onMusicClick(lastPlayedMusic.id)
-                                            } catch (e: Exception) {
-                                                Log.e("HomeScreen", "Error playing recent music: ${e.message}", e)
-                                            }
-                                        }
-                                    )
-                                    Spacer(modifier = Modifier.padding(end = 16.dp))
+                // Only show recently played section if we're not filtering or searching
+                if (searchQuery.isEmpty() && selectedArtist == null && selectedGenre == null) {
+                    // Recently Played Section
+                    item {
+                        RecentlyPlayedSection(
+                            recentlyPlayed = recentlyPlayed,
+                            onMusicClick = { musicId ->
+                                try {
+                                    playerViewModel.playMusic(musicId)
+                                    onMusicClick(musicId)
+                                } catch (e: Exception) {
+                                    Log.e("HomeScreen", "Error playing music: ${e.message}", e)
                                 }
                             }
+                        )
 
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+
+                    // Highlight cards
+                    item {
+                        Text(
+                            text = "Highlights",
+                            style = MaterialTheme.typography.titleLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            modifier = Modifier.padding(vertical = 8.dp)
+                        ) {
                             // Total songs card
                             item {
                                 TotalSongsCard(songCount = allSongs.size)
@@ -233,7 +237,6 @@ fun HomeScreen(
                                         music = mostPlayedMusic,
                                         onClick = {
                                             try {
-                                                // Play music first, then navigate
                                                 playerViewModel.playMusic(mostPlayedMusic.id)
                                                 onMusicClick(mostPlayedMusic.id)
                                             } catch (e: Exception) {
@@ -244,9 +247,9 @@ fun HomeScreen(
                                 }
                             }
                         }
-                    }
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
                 }
 
                 // Section title for all songs
@@ -274,9 +277,9 @@ fun HomeScreen(
                             } catch (e: Exception) {
                                 Log.e("HomeScreen", "Error playing music from list: ${e.message}", e)
                             }
-                        }
+                        },
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
 
                 // Show empty state if no songs
@@ -287,7 +290,7 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 32.dp)
+                                .padding(vertical = 32.dp, horizontal = 16.dp)
                         )
                     }
                 }

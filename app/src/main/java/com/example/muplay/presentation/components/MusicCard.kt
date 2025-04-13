@@ -128,7 +128,7 @@ fun CompactMusicCard(
 ) {
     Card(
         modifier = modifier
-            .width(200.dp)
+            .width(180.dp)
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
@@ -139,7 +139,7 @@ fun CompactMusicCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(160.dp)
+                    .height(180.dp)
                     .clip(MaterialTheme.shapes.medium)
             ) {
                 AsyncImage(

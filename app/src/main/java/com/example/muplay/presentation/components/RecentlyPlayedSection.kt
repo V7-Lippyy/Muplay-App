@@ -15,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.example.muplay.data.model.Music
 import com.example.muplay.data.model.MusicWithHistory
 import com.example.muplay.util.TimeUtil
 
@@ -62,14 +61,14 @@ fun RecentlyPlayedSection(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(recentlyPlayed) { item ->
-                    val music = item.music
-                    val playedAt = TimeUtil.getRelativeTimeString(item.playedAt)
+                items(recentlyPlayed) { musicWithHistory ->
+                    val music = musicWithHistory.music
+                    val playedAt = TimeUtil.getRelativeTimeString(musicWithHistory.playedAt)
 
-                    RecentlyPlayedCard(
+                    CompactMusicCard(
                         music = music,
-                        playedAt = playedAt,
-                        onClick = { onMusicClick(music.id) }
+                        onClick = { onMusicClick(music.id) },
+                        extraInfo = playedAt
                     )
                 }
             }
@@ -77,18 +76,4 @@ fun RecentlyPlayedSection(
 
         Spacer(modifier = Modifier.height(8.dp))
     }
-}
-
-@Composable
-fun RecentlyPlayedCard(
-    music: Music,
-    playedAt: String,
-    onClick: () -> Unit
-) {
-    MusicCard(
-        music = music,
-        onClick = onClick,
-        extraInfo = playedAt,
-        isCompact = true
-    )
 }
