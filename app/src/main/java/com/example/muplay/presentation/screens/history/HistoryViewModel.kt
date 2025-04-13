@@ -23,44 +23,42 @@ class HistoryViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository
 ) : ViewModel() {
 
-    // Status cleanup dan pesan status
-    private val _isCleaningUp = MutableStateFlow(false)
-    val isCleaningUp = _isCleaningUp.asStateFlow()
-
+    // Status message
     private val _statusMessage = MutableStateFlow("")
     val statusMessage = _statusMessage.asStateFlow()
 
-    // Sort type untuk riwayat
+    // Sort type for history
     enum class SortType {
-        TIME_DESC,    // Terbaru ke terlama
-        TIME_ASC,     // Terlama ke terbaru
-        TITLE_ASC,    // Judul A-Z
-        TITLE_DESC,   // Judul Z-A
-        ARTIST_ASC,   // Artis A-Z
-        ARTIST_DESC   // Artis Z-A
+        TIME_DESC,    // Newest to oldest
+        TIME_ASC,     // Oldest to newest
+        TITLE_ASC,    // Title A-Z
+        TITLE_DESC,   // Title Z-A
+        ARTIST_ASC,   // Artist A-Z
+        ARTIST_DESC   // Artist Z-A
     }
 
     // Filter state
     private val _sortType = MutableStateFlow(SortType.TIME_DESC)
     val sortType = _sortType.asStateFlow()
 
-    // Semua riwayat dari repository
+    // All history from repository
+    // Changed SharedFlow.Lazily to cache history for 30 minutes (1800000 ms)
     private val allHistory = historyRepository.getAllHistory()
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.WhileSubscribed(1800000),
             initialValue = emptyList()
         )
 
-    // Daftar playlist untuk fungsi 'tambahkan ke playlist'
+    // Playlists for 'add to playlist' function
     val playlists = playlistRepository.getAllPlaylists()
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
+            started = SharingStarted.WhileSubscribed(1800000),
             initialValue = emptyList()
         )
 
-    // State untuk history yang sudah diurutkan - FIXED: menggunakan combine untuk mengurangi rekomposisi
+    // State for sorted history - Using combine to reduce recomposition
     @OptIn(ExperimentalCoroutinesApi::class)
     val historyList: StateFlow<List<MusicWithHistory>> = combine(
         allHistory,
@@ -76,21 +74,16 @@ class HistoryViewModel @Inject constructor(
         }
     }.stateIn(
         scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000),
+        started = SharingStarted.WhileSubscribed(1800000),
         initialValue = emptyList()
     )
 
-    // Saat ViewModel diinisialisasi, bersihkan duplikasi secara otomatis
-    init {
-        cleanupDuplicateHistory(showMessage = false)
-    }
-
-    // Ubah jenis pengurutan
+    // Change sort type
     fun setSortType(type: SortType) {
         _sortType.value = type
     }
 
-    // Hapus entri riwayat tertentu
+    // Delete specific history entry
     fun deleteHistoryEntry(historyId: Long) {
         viewModelScope.launch {
             historyRepository.deleteHistoryEntry(historyId)
@@ -99,7 +92,7 @@ class HistoryViewModel @Inject constructor(
         }
     }
 
-    // Tambahkan lagu ke playlist
+    // Add song to playlist
     fun addToPlaylist(playlistId: Long, musicId: Long) {
         viewModelScope.launch {
             playlistRepository.addMusicToPlaylist(playlistId, musicId)
@@ -108,7 +101,7 @@ class HistoryViewModel @Inject constructor(
         }
     }
 
-    // Hapus semua riwayat
+    // Clear all history
     fun clearAllHistory() {
         viewModelScope.launch {
             historyRepository.clearHistory()
@@ -117,36 +110,15 @@ class HistoryViewModel @Inject constructor(
         }
     }
 
-    // Bersihkan riwayat duplikat
-    fun cleanupDuplicateHistory(showMessage: Boolean = true) {
-        viewModelScope.launch {
-            try {
-                _isCleaningUp.value = true
-                historyRepository.removeDuplicateHistory()
-                if (showMessage) {
-                    _statusMessage.value = "Duplikasi riwayat dibersihkan"
-                    resetStatusMessageAfterDelay()
-                }
-            } catch (e: Exception) {
-                if (showMessage) {
-                    _statusMessage.value = "Gagal membersihkan duplikasi: ${e.message}"
-                    resetStatusMessageAfterDelay()
-                }
-            } finally {
-                _isCleaningUp.value = false
-            }
-        }
-    }
-
-    // Reset status message setelah beberapa detik
+    // Reset status message after a few seconds
     private fun resetStatusMessageAfterDelay() {
         viewModelScope.launch {
-            kotlinx.coroutines.delay(3000) // Tampilkan pesan selama 3 detik
+            kotlinx.coroutines.delay(3000) // Show message for 3 seconds
             _statusMessage.value = ""
         }
     }
 
-    // Mendapatkan objek Music dari MusicWithHistory
+    // Get Music object from MusicWithHistory
     fun getMusicFromHistory(musicWithHistory: MusicWithHistory): Music {
         return musicWithHistory.music
     }
