@@ -4,7 +4,6 @@ sealed class Screen(val route: String) {
     object Splash : Screen("splash")
     object Home : Screen("home")
     object Player : Screen("player")
-    object History : Screen("history")
 
     // Change Playlist to Collection
     object Collection : Screen("collection")

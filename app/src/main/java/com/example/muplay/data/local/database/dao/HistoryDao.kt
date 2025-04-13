@@ -38,6 +38,19 @@ interface HistoryDao {
     @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN play_history h ON m.id = h.musicId ORDER BY h.playedAt DESC LIMIT :limit")
     fun getRecentlyPlayedWithMusic(limit: Int): Flow<List<MusicWithHistory>>
 
+    // New query to get only 6 most recent songs
+    @Transaction
+    @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN play_history h ON m.id = h.musicId ORDER BY h.playedAt DESC LIMIT 6")
+    fun getRecentSixPlayed(): Flow<List<MusicWithHistory>>
+
+    // Get count of history entries to check if we need to remove old ones
+    @Query("SELECT COUNT(*) FROM play_history")
+    suspend fun getHistoryCount(): Int
+
+    // Delete oldest history entries to maintain only the specified limit
+    @Query("DELETE FROM play_history WHERE id IN (SELECT id FROM play_history ORDER BY playedAt ASC LIMIT :count)")
+    suspend fun deleteOldestEntries(count: Int)
+
     @Transaction
     @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN (SELECT musicId, COUNT(*) as playCount, MAX(playedAt) as lastPlayed FROM play_history GROUP BY musicId ORDER BY playCount DESC LIMIT :limit) as popular ON m.id = popular.musicId JOIN play_history h ON h.musicId = m.id AND h.playedAt = popular.lastPlayed")
     fun getMostPlayedWithMusic(limit: Int): Flow<List<MusicWithHistory>>

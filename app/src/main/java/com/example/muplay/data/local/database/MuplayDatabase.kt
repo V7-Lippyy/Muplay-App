@@ -2,6 +2,8 @@ package com.example.muplay.data.local.database
 
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.muplay.data.local.database.dao.AlbumDao
 import com.example.muplay.data.local.database.dao.ArtistDao
 import com.example.muplay.data.local.database.dao.HistoryDao

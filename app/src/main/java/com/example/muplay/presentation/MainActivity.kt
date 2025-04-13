@@ -44,10 +44,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Mengatur layout agar mencakup area sistem UI
+        // Set layout to cover system UI area
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        // Inisialisasi permission handler
+        // Initialize permission handler
         permissionHandler = PermissionHandler(this)
 
         // Initialize notification permission helper for Android 13+
@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
         notificationPermissionHelper.setupPermissionLauncher()
 
         setContent {
-            // Gunakan preferensi tema dari DataStore
+            // Use theme preference from DataStore
             val isDarkTheme by viewModel.darkTheme.collectAsState()
             val hasPermission by permissionHandler.mediaPermissionGranted.collectAsState()
 

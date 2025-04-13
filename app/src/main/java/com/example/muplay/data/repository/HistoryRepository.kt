@@ -13,18 +13,19 @@ class HistoryRepository @Inject constructor(
     private val historyDao: HistoryDao
 ) {
     private val TAG = "HistoryRepository"
+    private val MAX_HISTORY_ENTRIES = 6
 
     suspend fun addToHistory(musicId: Long, playDuration: Long? = null) {
         try {
-            // Cek apakah lagu ini baru saja diputar (misalnya dalam 10 detik terakhir)
-            // Ini untuk menghindari duplikasi entri yang terlalu dekat
+            // Check if this song was recently played (within last 10 seconds)
+            // This is to avoid duplicate entries that are too close together
             val recentHistory = historyDao.getRecentHistoryForMusic(
                 musicId,
-                System.currentTimeMillis() - 10000 // 10 detik yang lalu
+                System.currentTimeMillis() - 10000 // 10 seconds ago
             )
 
             if (recentHistory.isEmpty()) {
-                // Jika tidak ada entri baru-baru ini, tambahkan yang baru
+                // If no recent entry, add a new one
                 val history = PlayHistory(
                     musicId = musicId,
                     playedAt = System.currentTimeMillis(),
@@ -32,8 +33,11 @@ class HistoryRepository @Inject constructor(
                 )
                 historyDao.insertHistory(history)
                 Log.d(TAG, "Added new history for music ID: $musicId")
+
+                // Check if we need to remove old entries to maintain the limit
+                maintainHistoryLimit()
             } else {
-                // Jika lagu ini baru saja diputar, update entri terakhir saja
+                // If the song was recently played, just update the last entry
                 val lastEntry = recentHistory.maxByOrNull { it.playedAt }
                 lastEntry?.let {
                     historyDao.updateHistoryEntry(
@@ -46,6 +50,20 @@ class HistoryRepository @Inject constructor(
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error adding to history: ${e.message}", e)
+        }
+    }
+
+    // Maintain only MAX_HISTORY_ENTRIES (6) in the history table
+    private suspend fun maintainHistoryLimit() {
+        try {
+            val count = historyDao.getHistoryCount()
+            if (count > MAX_HISTORY_ENTRIES) {
+                val toDelete = count - MAX_HISTORY_ENTRIES
+                historyDao.deleteOldestEntries(toDelete)
+                Log.d(TAG, "Deleted $toDelete oldest history entries to maintain limit of $MAX_HISTORY_ENTRIES")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error maintaining history limit: ${e.message}", e)
         }
     }
 
@@ -85,12 +103,18 @@ class HistoryRepository @Inject constructor(
         }
     }
 
+    // Get all history entries (now limited to 6 in the database)
     fun getAllHistory(): Flow<List<MusicWithHistory>> =
         historyDao.getHistoryWithMusic()
 
-    fun getRecentlyPlayed(limit: Int = 10): Flow<List<MusicWithHistory>> =
+    // Get specifically 6 most recently played songs for home screen
+    fun getRecentSixPlayed(): Flow<List<MusicWithHistory>> =
+        historyDao.getRecentSixPlayed()
+
+    // Old method, now ensures we get at most 6 entries
+    fun getRecentlyPlayed(limit: Int = 6): Flow<List<MusicWithHistory>> =
         historyDao.getRecentlyPlayedWithMusic(limit)
 
-    fun getMostPlayed(limit: Int = 10): Flow<List<MusicWithHistory>> =
+    fun getMostPlayed(limit: Int = 6): Flow<List<MusicWithHistory>> =
         historyDao.getMostPlayedWithMusic(limit)
 }

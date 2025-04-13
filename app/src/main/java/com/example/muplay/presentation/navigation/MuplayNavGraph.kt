@@ -11,7 +11,6 @@ import androidx.navigation.navArgument
 import com.example.muplay.presentation.screens.collection.AlbumDetailScreen
 import com.example.muplay.presentation.screens.collection.ArtistDetailScreen
 import com.example.muplay.presentation.screens.collection.CollectionScreen
-import com.example.muplay.presentation.screens.history.HistoryScreen
 import com.example.muplay.presentation.screens.home.HomeScreen
 import com.example.muplay.presentation.screens.player.PlayerScreen
 import com.example.muplay.presentation.screens.player.PlayerViewModel
@@ -59,17 +58,6 @@ fun MuplayNavGraph(
                     navController.popBackStack()
                 },
                 viewModel = playerViewModel
-            )
-        }
-
-        // History Screen
-        composable(Screen.History.route) {
-            HistoryScreen(
-                onMusicClick = { musicId ->
-                    Log.d("Navigation", "Playing from history, musicId: $musicId")
-                    playerViewModel.playMusic(musicId)
-                    navController.navigate(Screen.Player.route)
-                }
             )
         }
 

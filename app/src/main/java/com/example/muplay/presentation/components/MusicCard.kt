@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,6 +31,22 @@ import com.example.muplay.util.TimeUtil
 fun MusicCard(
     music: Music,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    extraInfo: String? = null,
+    isCompact: Boolean = false
+) {
+    if (isCompact) {
+        CompactMusicCard(music, onClick, extraInfo, modifier)
+    } else {
+        RegularMusicCard(music, onClick, extraInfo, modifier)
+    }
+}
+
+@Composable
+fun RegularMusicCard(
+    music: Music,
+    onClick: () -> Unit,
+    extraInfo: String? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -81,6 +98,16 @@ fun MusicCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+
+                // Optional extra info (like "Played 5 minutes ago")
+                if (extraInfo != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = extraInfo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
             }
 
             // Duration
@@ -88,6 +115,74 @@ fun MusicCard(
                 text = TimeUtil.formatDuration(music.duration),
                 style = MaterialTheme.typography.bodySmall
             )
+        }
+    }
+}
+
+@Composable
+fun CompactMusicCard(
+    music: Music,
+    onClick: () -> Unit,
+    extraInfo: String? = null,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .width(200.dp)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(bottom = 12.dp)
+        ) {
+            // Album Art (larger and more prominent)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(160.dp)
+                    .clip(MaterialTheme.shapes.medium)
+            ) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(music.albumArtPath)
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = "Album art",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            // Song Details
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            ) {
+                Text(
+                    text = music.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = music.artist,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                // Extra info (like "Played 5 minutes ago")
+                if (extraInfo != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = extraInfo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    )
+                }
+            }
         }
     }
 }

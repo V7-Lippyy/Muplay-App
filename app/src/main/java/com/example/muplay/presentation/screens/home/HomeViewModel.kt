@@ -24,19 +24,19 @@ class HomeViewModel @Inject constructor(
     private val historyRepository: HistoryRepository
 ) : ViewModel() {
 
-    // State untuk query pencarian
+    // State for search query
     private val _searchQuery = MutableStateFlow("")
     val searchQuery = _searchQuery.asStateFlow()
 
-    // State untuk filter artis yang dipilih
+    // State for selected artist filter
     private val _selectedArtist = MutableStateFlow<String?>(null)
     val selectedArtist = _selectedArtist.asStateFlow()
 
-    // State untuk filter genre yang dipilih
+    // State for selected genre filter
     private val _selectedGenre = MutableStateFlow<String?>(null)
     val selectedGenre = _selectedGenre.asStateFlow()
 
-    // Filtered songs berdasarkan pencarian dan filter - FIXED: gunakan combine untuk lebih efisien
+    // Filtered songs based on search and filters - using combine for efficiency
     @OptIn(ExperimentalCoroutinesApi::class)
     val filteredSongs: StateFlow<List<Music>> = combine(
         _searchQuery,
@@ -46,13 +46,13 @@ class HomeViewModel @Inject constructor(
         Triple(query, artist, genre)
     }.flatMapLatest { (query, artist, genre) ->
         when {
-            // Prioritaskan pencarian
+            // Prioritize search
             query.isNotEmpty() -> musicRepository.searchMusic(query)
-            // Filter berdasarkan artis
+            // Filter by artist
             artist != null -> musicRepository.getMusicByArtist(artist)
-            // Filter berdasarkan genre
+            // Filter by genre
             genre != null -> musicRepository.getMusicByGenre(genre)
-            // Tampilkan semua jika tidak ada filter
+            // Show all if no filters
             else -> musicRepository.getAllMusic()
         }
     }.stateIn(
@@ -61,7 +61,7 @@ class HomeViewModel @Inject constructor(
         initialValue = emptyList()
     )
 
-    // Daftar semua artis untuk filter
+    // List of all artists for filter
     val artists = musicRepository.getDistinctArtists()
         .stateIn(
             scope = viewModelScope,
@@ -69,7 +69,7 @@ class HomeViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    // Daftar semua genre untuk filter
+    // List of all genres for filter
     val genres = musicRepository.getDistinctGenres()
         .stateIn(
             scope = viewModelScope,
@@ -77,23 +77,23 @@ class HomeViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    // Lagu yang terakhir diputar
-    val recentlyPlayed = historyRepository.getRecentlyPlayed(10)
+    // Recently played songs (maximum 6)
+    val recentlyPlayed = historyRepository.getRecentSixPlayed()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    // Lagu yang paling sering diputar
-    val mostPlayed = historyRepository.getMostPlayed(10)
+    // Most played songs
+    val mostPlayed = historyRepository.getMostPlayed(6)
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    // Total lagu di perangkat
+    // Total songs on device
     val totalSongs = musicRepository.getAllMusic()
         .stateIn(
             scope = viewModelScope,
@@ -101,30 +101,30 @@ class HomeViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    // Update query pencarian
+    // Update search query
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
 
-    // Pilih artis untuk filter
+    // Select artist for filter
     fun selectArtist(artist: String?) {
         _selectedArtist.value = artist
-        // Reset filter genre jika artis dipilih
+        // Reset genre filter if artist is selected
         if (artist != null) {
             _selectedGenre.value = null
         }
     }
 
-    // Pilih genre untuk filter
+    // Select genre for filter
     fun selectGenre(genre: String?) {
         _selectedGenre.value = genre
-        // Reset filter artis jika genre dipilih
+        // Reset artist filter if genre is selected
         if (genre != null) {
             _selectedArtist.value = null
         }
     }
 
-    // Reset semua filter
+    // Reset all filters
     fun resetFilters() {
         _searchQuery.value = ""
         _selectedArtist.value = null
@@ -134,16 +134,16 @@ class HomeViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             try {
-                // Refresh library musik saat ViewModel dibuat
+                // Refresh music library when ViewModel is created
                 musicRepository.refreshMusicLibrary()
             } catch (e: Exception) {
-                // Tangani error jika terjadi masalah saat memuat library musik
-                // Misalnya: catat ke log, tampilkan pesan error, dsb.
+                // Handle error if there's an issue loading the music library
+                // For example: log error, display error message, etc.
             }
         }
     }
 
-    // Konversi MusicWithHistory ke Music
+    // Convert MusicWithHistory to Music
     fun getMusicFromHistory(musicWithHistory: MusicWithHistory): Music {
         return musicWithHistory.music
     }

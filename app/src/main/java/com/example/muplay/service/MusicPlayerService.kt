@@ -90,6 +90,9 @@ class MusicPlayerService : Service() {
 
         // Konstanta untuk anti-duplikasi riwayat
         const val MIN_TIME_BETWEEN_HISTORY_ENTRIES = 10000L // 10 detik
+
+        // Maximum history entries to maintain
+        const val MAX_HISTORY_ENTRIES = 6
     }
 
     private val playerListener = object : Player.Listener {
@@ -110,7 +113,7 @@ class MusicPlayerService : Service() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             Log.d(TAG, "Playback state changed: $playbackState")
             if (playbackState == Player.STATE_ENDED) {
-                // Tambahkan lagu ke riwayat jika sudah selesai diputar
+                // Add song to history when it finishes playing
                 _currentMusic.value?.let { music ->
                     serviceScope.launch {
                         historyRepository.addToHistory(
@@ -118,10 +121,10 @@ class MusicPlayerService : Service() {
                             playDuration = music.duration
                         )
 
-                        // Membersihkan duplikasi riwayat secara periodik
-                        // Namun tidak setiap kali lagu selesai untuk menghindari overhead
+                        // Clean up duplicate history periodically
+                        // But not after each song to avoid overhead
                         val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastPlayedTimestamp > 60000) { // Bersihkan setiap menit
+                        if (currentTime - lastPlayedTimestamp > 60000) { // Clean every minute
                             lastPlayedTimestamp = currentTime
                             historyRepository.removeDuplicateHistory()
                         }
@@ -140,7 +143,7 @@ class MusicPlayerService : Service() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             Log.d(TAG, "Media item transition: ${mediaItem?.mediaId}, reason: $reason")
             mediaItem?.let {
-                // Perbarui info lagu saat ini
+                // Update current song info
                 updateCurrentMusic(it)
                 safelyUpdateNotification()
             }
@@ -160,10 +163,10 @@ class MusicPlayerService : Service() {
         Log.d(TAG, "Service created")
 
         try {
-            // Inisialisasi CoverArtManager
+            // Initialize CoverArtManager
             coverArtManager = CoverArtManager(this)
 
-            // Inisialisasi ExoPlayer
+            // Initialize ExoPlayer
             player = ExoPlayer.Builder(this).build().apply {
                 addListener(playerListener)
             }
@@ -223,22 +226,22 @@ class MusicPlayerService : Service() {
         try {
             if (music.albumArtPath != null) {
                 serviceScope.launch(Dispatchers.IO) {
-                    // Gunakan CoverArtManager untuk memuat album art
+                    // Use CoverArtManager to load album art
                     val bitmap = coverArtManager.loadCoverArtBitmap(music.albumArtPath)
                     if (bitmap != null) {
                         createAndShowNotification(music, bitmap)
                     } else {
-                        // Jika gagal memuat, tampilkan notifikasi tanpa album art
+                        // If loading fails, show notification without album art
                         createAndShowNotification(music, null)
                     }
                 }
             } else {
-                // Jika tidak ada album art, tampilkan notifikasi tanpa album art
+                // If no album art, show notification without it
                 createAndShowNotification(music, null)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in updateNotification: ${e.message}", e)
-            // Jika terjadi error, tetap tampilkan notifikasi tanpa album art
+            // If an error occurs, still show notification without album art
             createAndShowNotification(music, null)
         }
     }
@@ -343,7 +346,7 @@ class MusicPlayerService : Service() {
             Log.e(TAG, "Error releasing resources: ${e.message}", e)
         }
 
-        // Cancel semua coroutines
+        // Cancel all coroutines
         serviceScope.cancel()
 
         super.onDestroy()
@@ -358,7 +361,7 @@ class MusicPlayerService : Service() {
             try {
                 while (isActive && isServiceActive && _isPlaying.value) {
                     _playbackPosition.value = player.currentPosition
-                    kotlinx.coroutines.delay(1000) // Update setiap 1 detik
+                    kotlinx.coroutines.delay(1000) // Update every 1 second
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in position poller: ${e.message}", e)
@@ -376,30 +379,30 @@ class MusicPlayerService : Service() {
             val musicId = mediaItem.mediaId.toLongOrNull() ?: return
             Log.d(TAG, "Updating current music with ID: $musicId")
 
-            // Dapatkan info lagu dari extras
+            // Get song info from extras
             val extras = mediaItem.mediaMetadata.extras
             extras?.let { bundle ->
                 val music = bundle.getMusicFromExtras()
                 _currentMusic.value = music
                 Log.d(TAG, "Current music updated to: ${music.title}")
 
-                // Cek apakah lagu ini baru saja diputar untuk menghindari duplikasi riwayat
+                // Check if this song was recently played to avoid duplicate history entries
                 val currentTime = System.currentTimeMillis()
                 val shouldAddToHistory = if (musicId == lastPlayedMusicId) {
-                    // Jika lagu yang sama, cek apakah sudah cukup lama sejak entri terakhir
+                    // If it's the same song, check if enough time has passed since last entry
                     val timeDiff = currentTime - lastPlayedTimestamp
                     timeDiff > MIN_TIME_BETWEEN_HISTORY_ENTRIES
                 } else {
-                    // Lagu berbeda, tambahkan ke riwayat
+                    // Different song, add to history
                     true
                 }
 
                 if (shouldAddToHistory) {
-                    // Perbarui ID dan timestamp terakhir
+                    // Update last ID and timestamp
                     lastPlayedMusicId = musicId
                     lastPlayedTimestamp = currentTime
 
-                    // Tambahkan ke riwayat
+                    // Add to history (limited to MAX_HISTORY_ENTRIES)
                     serviceScope.launch {
                         try {
                             historyRepository.addToHistory(musicId)
@@ -425,11 +428,11 @@ class MusicPlayerService : Service() {
             Log.d(TAG, "Playing music: ${music.id} - ${music.title}")
             Log.d(TAG, "Music URI: ${music.uri}")
 
-            // Set daftar playlist jika ada
+            // Set playlist if available
             if (playlistSongs.isNotEmpty()) {
                 setPlaylist(playlistSongs, music)
             } else {
-                // Putar lagu tunggal
+                // Play single song
                 val mediaItem = createMediaItem(music)
                 player.setMediaItem(mediaItem)
                 player.prepare()
@@ -450,13 +453,13 @@ class MusicPlayerService : Service() {
 
     fun updateCurrentMusicCoverArt(updatedMusic: Music) {
         try {
-            // Update current music dengan cover art yang baru
+            // Update current music with new cover art
             _currentMusic.value = updatedMusic
 
-            // Perbarui notifikasi dengan cover art baru
+            // Update notification with new cover art
             safelyUpdateNotification()
 
-            // Log untuk memastikan perubahan
+            // Log to confirm the change
             Log.d(TAG, "Updated cover art: ${updatedMusic.albumArtPath}")
         } catch (e: Exception) {
             Log.e(TAG, "Error updating current music cover art: ${e.message}", e)
@@ -482,14 +485,14 @@ class MusicPlayerService : Service() {
             Log.d(TAG, "Setting playlist with ${songs.size} songs")
             _playlist.value = songs
 
-            // Reset player dan tambahkan semua lagu ke playlist
+            // Reset player and add all songs to playlist
             player.clearMediaItems()
 
             val mediaItems = songs.map { createMediaItem(it) }
             player.addMediaItems(mediaItems)
             player.prepare()
 
-            // Jika ada lagu tertentu yang ingin diputar, cari posisinya
+            // If there's a specific song to play, find its position
             if (currentMusic != null) {
                 val index = songs.indexOfFirst { it.id == currentMusic.id }
                 if (index != -1) {
@@ -556,7 +559,7 @@ class MusicPlayerService : Service() {
                 player.playWhenReady = true  // Ensure it plays after skipping
                 Log.d(TAG, "Skipped to next media item. Current index: ${player.currentMediaItemIndex}")
             } else {
-                // Jika sudah di lagu terakhir, kembali ke lagu pertama (wrap-around)
+                // If at the last song, go back to the first one (wrap around)
                 if (player.mediaItemCount > 0) {
                     player.seekTo(0, 0)
                     player.playWhenReady = true
@@ -582,13 +585,13 @@ class MusicPlayerService : Service() {
                 player.playWhenReady = true  // Ensure it plays after skipping
                 Log.d(TAG, "Skipped to previous media item. Current index: ${player.currentMediaItemIndex}")
             } else {
-                // Jika sudah di lagu pertama, kembali ke lagu terakhir (wrap-around)
+                // If at the first song, go to the last one (wrap around)
                 if (player.mediaItemCount > 0) {
                     player.seekTo(player.mediaItemCount - 1, 0)
                     player.playWhenReady = true
                     Log.d(TAG, "At first item, wrapped around to last track (index ${player.mediaItemCount - 1})")
                 } else {
-                    // Jika tidak ada lagu sebelumnya, kembali ke awal lagu saat ini
+                    // If no previous song, go back to the start of current song
                     player.seekTo(0)
                     Log.d(TAG, "No tracks available, restarting current track")
                 }

@@ -1,7 +1,6 @@
 package com.example.muplay.presentation.components
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material3.Icon
@@ -33,18 +32,13 @@ fun BottomNavigationBar(navController: NavController) {
             screen = Screen.Home
         ),
         BottomNavItem(
-            title = "Riwayat",
-            icon = Icons.Default.History,
-            screen = Screen.History
-        ),
-        BottomNavItem(
             title = "Koleksi",
             icon = Icons.Default.LibraryMusic, // Changed icon to be more appropriate for collection
             screen = Screen.Collection // We'll rename this in the Screen class
         )
     )
 
-    // Ambil rute saat ini
+    // Get current route
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -69,13 +63,13 @@ fun BottomNavigationBar(navController: NavController) {
                 onClick = {
                     if (currentRoute != item.screen.route) {
                         navController.navigate(item.screen.route) {
-                            // Hindari multiple stack entries untuk tujuan yang sama
+                            // Avoid multiple stack entries for the same destination
                             popUpTo(navController.graph.startDestinationId) {
                                 saveState = true
                             }
                             // Launchmode single top
                             launchSingleTop = true
-                            // Restore state saat navigasi kembali ke posisi sebelumnya
+                            // Restore state when navigating back to previous position
                             restoreState = true
                         }
                     }
