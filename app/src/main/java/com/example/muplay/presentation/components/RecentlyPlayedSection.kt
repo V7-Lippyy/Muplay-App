@@ -2,13 +2,12 @@ package com.example.muplay.presentation.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,20 +55,62 @@ fun RecentlyPlayedSection(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
         } else {
-            // Horizontal scrollable list of recently played songs
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            // Custom 2x3 grid using Column and Row
+            val items = recentlyPlayed.take(6) // Limit to 6 items for 2x3 grid
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(recentlyPlayed) { musicWithHistory ->
-                    val music = musicWithHistory.music
-                    val playedAt = TimeUtil.getRelativeTimeString(musicWithHistory.playedAt)
+                // First row (items 0, 1, 2)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (index in 0 until 3) {
+                        if (index < items.size) {
+                            val musicWithHistory = items[index]
+                            val music = musicWithHistory.music
+                            val playedAt = TimeUtil.getRelativeTimeString(musicWithHistory.playedAt)
+                            CompactMusicCard(
+                                music = music,
+                                onClick = { onMusicClick(music.id) },
+                                extraInfo = playedAt,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .width(120.dp)
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
 
-                    CompactMusicCard(
-                        music = music,
-                        onClick = { onMusicClick(music.id) },
-                        extraInfo = playedAt
-                    )
+                // Second row (items 3, 4, 5)
+                if (items.size > 3) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        for (index in 3 until 6) {
+                            if (index < items.size) {
+                                val musicWithHistory = items[index]
+                                val music = musicWithHistory.music
+                                val playedAt = TimeUtil.getRelativeTimeString(musicWithHistory.playedAt)
+                                CompactMusicCard(
+                                    music = music,
+                                    onClick = { onMusicClick(music.id) },
+                                    extraInfo = playedAt,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .width(120.dp)
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
         }

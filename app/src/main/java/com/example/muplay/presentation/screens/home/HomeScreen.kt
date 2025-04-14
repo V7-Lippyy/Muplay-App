@@ -290,7 +290,10 @@ fun HomeScreen(
                                 }
                             }
                         )
-
+                        // Log the rendering of RecentlyPlayedSection
+                        LaunchedEffect(recentlyPlayed) {
+                            Log.d(TAG, "Rendering RecentlyPlayedSection with ${recentlyPlayed.size} items")
+                        }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
 

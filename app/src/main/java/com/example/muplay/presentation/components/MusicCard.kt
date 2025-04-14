@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +28,10 @@ import coil.request.ImageRequest
 import com.example.muplay.data.model.Music
 import com.example.muplay.util.TimeUtil
 
+/**
+ * A music card component that can be displayed in either regular or compact layout.
+ * This version is backward compatible with existing code that only passes music and onClick.
+ */
 @Composable
 fun MusicCard(
     music: Music,
@@ -42,6 +47,9 @@ fun MusicCard(
     }
 }
 
+/**
+ * A card that displays a music item in a regular row format (album art on left, details on right)
+ */
 @Composable
 fun RegularMusicCard(
     music: Music,
@@ -119,6 +127,9 @@ fun RegularMusicCard(
     }
 }
 
+/**
+ * A card that displays a music item in a compact card format, suitable for grids and special sections.
+ */
 @Composable
 fun CompactMusicCard(
     music: Music,
@@ -128,18 +139,16 @@ fun CompactMusicCard(
 ) {
     Card(
         modifier = modifier
-            .width(180.dp)
+            .height(180.dp) // Fixed height to ensure consistent grid layout
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(bottom = 12.dp)
-        ) {
-            // Album Art (larger and more prominent)
+        Column {
+            // Album Art (square aspect ratio)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(180.dp)
+                    .aspectRatio(1f) // Make it square
                     .clip(MaterialTheme.shapes.medium)
             ) {
                 AsyncImage(
@@ -155,31 +164,34 @@ fun CompactMusicCard(
 
             // Song Details
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                modifier = Modifier.padding(8.dp)
             ) {
                 Text(
                     text = music.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = music.artist,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
 
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = music.artist,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                )
+
                 // Extra info (like "Played 5 minutes ago")
                 if (extraInfo != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = extraInfo,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                        style = MaterialTheme.typography.labelSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
                     )
                 }
             }
