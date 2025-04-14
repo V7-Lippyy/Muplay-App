@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LibraryMusic
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -23,23 +24,37 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.muplay.presentation.components.HighlightCard
 import com.example.muplay.presentation.components.MusicCard
 import com.example.muplay.presentation.components.RecentlyPlayedSection
 import com.example.muplay.presentation.components.SectionTitle
 import com.example.muplay.presentation.components.TotalSongsCard
 import com.example.muplay.presentation.screens.player.PlayerViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+
+private const val TAG = "HomeScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,27 +66,97 @@ fun HomeScreen(
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedArtist by viewModel.selectedArtist.collectAsState()
     val selectedGenre by viewModel.selectedGenre.collectAsState()
-    val songs by viewModel.filteredSongs.collectAsState()
-    val artists by viewModel.artists.collectAsState()
-    val genres by viewModel.genres.collectAsState()
-    val recentlyPlayed by viewModel.recentlyPlayed.collectAsState()
-    val mostPlayed by viewModel.mostPlayed.collectAsState()
-    val allSongs by viewModel.totalSongs.collectAsState()
+
+    // Use collectAsStateWithLifecycle for better lifecycle awareness
+    val songs by viewModel.filteredSongs.collectAsStateWithLifecycle()
+    val artists by viewModel.artists.collectAsStateWithLifecycle()
+    val genres by viewModel.genres.collectAsStateWithLifecycle()
+    val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
+    val mostPlayed by viewModel.mostPlayed.collectAsStateWithLifecycle()
+    val allSongs by viewModel.totalSongs.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Log current state of recently played
+    LaunchedEffect(recentlyPlayed) {
+        Log.d(TAG, "Recently played updated: ${recentlyPlayed.size} items")
+        recentlyPlayed.forEachIndexed { index, item ->
+            Log.d(TAG, "  Item $index: ${item.music.title} by ${item.music.artist}")
+        }
+    }
+
+    // CRITICAL: Force refresh when the screen becomes visible
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_CREATE -> {
+                    Log.d(TAG, "HomeScreen: ON_CREATE")
+                    viewModel.refreshRecentlyPlayed()
+                }
+                Lifecycle.Event.ON_START -> {
+                    Log.d(TAG, "HomeScreen: ON_START")
+                    viewModel.refreshRecentlyPlayed()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    Log.d(TAG, "HomeScreen: ON_RESUME")
+                    viewModel.refreshRecentlyPlayed()
+
+                    // Extra refresh after a short delay to ensure data loads
+                    coroutineScope.launch {
+                        delay(300)
+                        viewModel.refreshRecentlyPlayed()
+                    }
+                }
+                else -> { /* ignore other events */ }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Force initial refresh of recently played
+    LaunchedEffect(Unit) {
+        Log.d(TAG, "Initial launch effect")
+        viewModel.refreshRecentlyPlayed()
+
+        // Double refresh with delay for better reliability
+        delay(300)
+        viewModel.refreshRecentlyPlayed()
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Beranda") },
                 actions = {
+                    // Refresh button
+                    IconButton(onClick = {
+                        viewModel.refreshRecentlyPlayed()
+                        coroutineScope.launch {
+                            snackbarHostState.showSnackbar("Menyegarkan data riwayat pemutaran")
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Data"
+                        )
+                    }
+
                     IconButton(onClick = { isSearchActive = true }) {
                         Icon(
                             imageVector = Icons.Default.Search,
                             contentDescription = "Cari"
                         )
                     }
+
                     IconButton(onClick = { showFilters = !showFilters }) {
                         Icon(
                             imageVector = Icons.Default.FilterList,
@@ -80,7 +165,8 @@ fun HomeScreen(
                     }
                 }
             )
-        }
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { innerPadding ->
         Column(
             modifier = Modifier
@@ -107,13 +193,13 @@ fun HomeScreen(
                             MusicCard(
                                 music = song,
                                 onClick = {
-                                    Log.d("HomeScreen", "Music clicked: ${song.id}, title: ${song.title}")
+                                    Log.d(TAG, "Music clicked: ${song.id}, title: ${song.title}")
                                     try {
                                         // Play music first, then navigate
                                         playerViewModel.playMusic(song.id)
                                         onMusicClick(song.id)
                                     } catch (e: Exception) {
-                                        Log.e("HomeScreen", "Error playing music: ${e.message}", e)
+                                        Log.e(TAG, "Error playing music: ${e.message}", e)
                                     }
                                     isSearchActive = false
                                 }
@@ -191,7 +277,7 @@ fun HomeScreen(
             ) {
                 // Only show recently played section if we're not filtering or searching
                 if (searchQuery.isEmpty() && selectedArtist == null && selectedGenre == null) {
-                    // Recently Played Section
+                    // Recently Played Section - ALWAYS show this section, even if empty
                     item {
                         RecentlyPlayedSection(
                             recentlyPlayed = recentlyPlayed,
@@ -200,7 +286,7 @@ fun HomeScreen(
                                     playerViewModel.playMusic(musicId)
                                     onMusicClick(musicId)
                                 } catch (e: Exception) {
-                                    Log.e("HomeScreen", "Error playing music: ${e.message}", e)
+                                    Log.e(TAG, "Error playing music: ${e.message}", e)
                                 }
                             }
                         )
@@ -240,7 +326,7 @@ fun HomeScreen(
                                                 playerViewModel.playMusic(mostPlayedMusic.id)
                                                 onMusicClick(mostPlayedMusic.id)
                                             } catch (e: Exception) {
-                                                Log.e("HomeScreen", "Error playing popular music: ${e.message}", e)
+                                                Log.e(TAG, "Error playing popular music: ${e.message}", e)
                                             }
                                         }
                                     )
@@ -269,13 +355,13 @@ fun HomeScreen(
                     MusicCard(
                         music = song,
                         onClick = {
-                            Log.d("HomeScreen", "Music clicked from list: ${song.id}, title: ${song.title}")
+                            Log.d(TAG, "Music clicked from list: ${song.id}, title: ${song.title}")
                             try {
                                 // Play music first, then navigate
                                 playerViewModel.playMusic(song.id)
                                 onMusicClick(song.id)
                             } catch (e: Exception) {
-                                Log.e("HomeScreen", "Error playing music from list: ${e.message}", e)
+                                Log.e(TAG, "Error playing music from list: ${e.message}", e)
                             }
                         },
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)

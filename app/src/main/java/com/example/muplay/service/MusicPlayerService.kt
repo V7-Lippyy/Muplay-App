@@ -33,11 +33,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -49,6 +51,7 @@ private const val CHANNEL_ID = "music_playback_channel"
 class MusicPlayerService : Service() {
     // Custom CoroutineScope untuk service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Inject
     lateinit var historyRepository: HistoryRepository
@@ -104,6 +107,12 @@ class MusicPlayerService : Service() {
             if (isPlaying) {
                 startPositionPoller()
                 safelyUpdateNotification()
+
+                // Record play in history immediately when playback starts
+                _currentMusic.value?.let { music ->
+                    Log.d(TAG, "Adding to history as playback started: ${music.id}")
+                    addToHistory(music.id)
+                }
             } else {
                 stopPositionPoller()
                 safelyUpdateNotification()
@@ -115,20 +124,8 @@ class MusicPlayerService : Service() {
             if (playbackState == Player.STATE_ENDED) {
                 // Add song to history when it finishes playing
                 _currentMusic.value?.let { music ->
-                    serviceScope.launch {
-                        historyRepository.addToHistory(
-                            musicId = music.id,
-                            playDuration = music.duration
-                        )
-
-                        // Clean up duplicate history periodically
-                        // But not after each song to avoid overhead
-                        val currentTime = System.currentTimeMillis()
-                        if (currentTime - lastPlayedTimestamp > 60000) { // Clean every minute
-                            lastPlayedTimestamp = currentTime
-                            historyRepository.removeDuplicateHistory()
-                        }
-                    }
+                    Log.d(TAG, "Adding to history as playback completed: ${music.id}")
+                    addToHistory(music.id, music.duration)
                 }
             } else if (playbackState == Player.STATE_READY) {
                 Log.d(TAG, "Player is ready")
@@ -151,6 +148,26 @@ class MusicPlayerService : Service() {
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             Log.e(TAG, "Player error: ${error.message}", error)
+        }
+    }
+
+    // Helper function to add to history with proper error handling
+    private fun addToHistory(musicId: Long, playDuration: Long? = null) {
+        ioScope.launch {
+            try {
+                // Use IO Dispatcher for database operations
+                historyRepository.addToHistory(musicId, playDuration)
+                Log.d(TAG, "Successfully added music ID $musicId to history")
+
+                // Record that we just added this song to avoid duplicates
+                lastPlayedMusicId = musicId
+                lastPlayedTimestamp = System.currentTimeMillis()
+
+                // Small delay to ensure DB operation completes
+                delay(100)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding to history: ${e.message}", e)
+            }
         }
     }
 
@@ -348,6 +365,7 @@ class MusicPlayerService : Service() {
 
         // Cancel all coroutines
         serviceScope.cancel()
+        ioScope.cancel()
 
         super.onDestroy()
     }
@@ -386,32 +404,19 @@ class MusicPlayerService : Service() {
                 _currentMusic.value = music
                 Log.d(TAG, "Current music updated to: ${music.title}")
 
-                // Check if this song was recently played to avoid duplicate history entries
+                // Add to history (only if not duplicate)
                 val currentTime = System.currentTimeMillis()
                 val shouldAddToHistory = if (musicId == lastPlayedMusicId) {
-                    // If it's the same song, check if enough time has passed since last entry
                     val timeDiff = currentTime - lastPlayedTimestamp
                     timeDiff > MIN_TIME_BETWEEN_HISTORY_ENTRIES
                 } else {
-                    // Different song, add to history
                     true
                 }
 
                 if (shouldAddToHistory) {
-                    // Update last ID and timestamp
-                    lastPlayedMusicId = musicId
-                    lastPlayedTimestamp = currentTime
-
-                    // IMPORTANT: Immediately add to history (don't delay)
-                    serviceScope.launch {
-                        try {
-                            // Make sure this runs even if app is closing
-                            historyRepository.addToHistory(musicId)
-                            Log.d(TAG, "Added to history: $musicId")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error adding to history: ${e.message}", e)
-                        }
-                    }
+                    // Add to history immediately when song changes
+                    addToHistory(musicId)
+                    Log.d(TAG, "Added to history on media item transition: $musicId")
                 } else {
                     Log.d(TAG, "Skipped adding to history: $musicId (recently played)")
                 }
@@ -443,6 +448,9 @@ class MusicPlayerService : Service() {
                 _isPlaying.value = true
 
                 Log.d(TAG, "Started playing music: ${music.title}")
+
+                // Directly add to history when explicitly playing a song
+                addToHistory(music.id)
 
                 // Update notification
                 safelyUpdateNotification()
@@ -499,6 +507,9 @@ class MusicPlayerService : Service() {
                 if (index != -1) {
                     player.seekTo(index, 0)
                     Log.d(TAG, "Seeking to song at position $index: ${currentMusic.title}")
+
+                    // Add this song to history immediately
+                    addToHistory(currentMusic.id)
                 }
             }
 
@@ -544,6 +555,11 @@ class MusicPlayerService : Service() {
                 player.pause()
             } else {
                 player.play()
+
+                // Add to history when resuming play
+                _currentMusic.value?.let { music ->
+                    addToHistory(music.id)
+                }
             }
             _isPlaying.value = player.isPlaying
             safelyUpdateNotification()

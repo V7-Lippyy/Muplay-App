@@ -30,15 +30,17 @@ interface HistoryDao {
     @Query("SELECT * FROM play_history WHERE musicId = :musicId AND playedAt > :minTimestamp")
     suspend fun getRecentHistoryForMusic(musicId: Long, minTimestamp: Long): List<PlayHistory>
 
+    // IMPORTANT: Added 'ORDER BY playedAt DESC' to ensure we get most recent first
     @Transaction
     @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN play_history h ON m.id = h.musicId ORDER BY h.playedAt DESC")
     fun getHistoryWithMusic(): Flow<List<MusicWithHistory>>
 
+    // Modified to ensure the most recently played songs come first
     @Transaction
     @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN play_history h ON m.id = h.musicId ORDER BY h.playedAt DESC LIMIT :limit")
     fun getRecentlyPlayedWithMusic(limit: Int): Flow<List<MusicWithHistory>>
 
-    // New query to get only 6 most recent songs
+    // Critical for this feature - get the 6 most recent songs played (order by most recent)
     @Transaction
     @Query("SELECT m.*, h.id as historyId, h.playedAt, h.playDuration FROM music m JOIN play_history h ON m.id = h.musicId ORDER BY h.playedAt DESC LIMIT 6")
     fun getRecentSixPlayed(): Flow<List<MusicWithHistory>>
