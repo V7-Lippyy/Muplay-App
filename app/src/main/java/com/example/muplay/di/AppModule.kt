@@ -10,8 +10,8 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.muplay.data.local.database.MuplayDatabase
 import com.example.muplay.data.local.database.dao.AlbumDao
 import com.example.muplay.data.local.database.dao.ArtistDao
-import com.example.muplay.data.local.database.dao.HistoryDao
 import com.example.muplay.data.local.database.dao.MusicDao
+import com.example.muplay.data.local.database.dao.PlayCountDao
 import com.example.muplay.data.local.database.dao.PlaylistDao
 import dagger.Module
 import dagger.Provides
@@ -36,7 +36,7 @@ object AppModule {
             MuplayDatabase::class.java,
             "muplay_database"
         )
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
             .fallbackToDestructiveMigration() // Sebagai fallback jika migrasi gagal
             .build()
     }
@@ -55,8 +55,8 @@ object AppModule {
 
     @Singleton
     @Provides
-    fun provideHistoryDao(database: MuplayDatabase): HistoryDao {
-        return database.historyDao()
+    fun providePlayCountDao(database: MuplayDatabase): PlayCountDao {
+        return database.playCountDao()
     }
 
     @Singleton
@@ -99,6 +99,26 @@ object AppModule {
                     `name` TEXT NOT NULL PRIMARY KEY,
                     `coverArtPath` TEXT,
                     `lastUpdated` INTEGER NOT NULL
+                )
+                """
+            )
+        }
+    }
+
+    // Migration from version 3 (with PlayHistory) to version 4 (with PlayCount)
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Drop the old history table if it exists
+            database.execSQL("DROP TABLE IF EXISTS `play_history`")
+
+            // Create the new play_count table
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `play_count` (
+                    `musicId` INTEGER NOT NULL PRIMARY KEY,
+                    `count` INTEGER NOT NULL DEFAULT 0,
+                    `lastPlayed` INTEGER NOT NULL,
+                    `isFavorite` INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )

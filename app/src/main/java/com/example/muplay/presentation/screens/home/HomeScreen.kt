@@ -24,7 +24,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -46,8 +45,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.muplay.presentation.components.HighlightCard
+import com.example.muplay.presentation.components.MostPlayedSection
 import com.example.muplay.presentation.components.MusicCard
-import com.example.muplay.presentation.components.RecentlyPlayedSection
 import com.example.muplay.presentation.components.SectionTitle
 import com.example.muplay.presentation.components.TotalSongsCard
 import com.example.muplay.presentation.screens.player.PlayerViewModel
@@ -71,8 +70,7 @@ fun HomeScreen(
     val songs by viewModel.filteredSongs.collectAsStateWithLifecycle()
     val artists by viewModel.artists.collectAsStateWithLifecycle()
     val genres by viewModel.genres.collectAsStateWithLifecycle()
-    val recentlyPlayed by viewModel.recentlyPlayed.collectAsStateWithLifecycle()
-    val mostPlayed by viewModel.mostPlayed.collectAsStateWithLifecycle()
+    val mostPlayedSongs by viewModel.mostPlayedSongs.collectAsStateWithLifecycle()
     val allSongs by viewModel.totalSongs.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
@@ -81,11 +79,11 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
-    // Log current state of recently played
-    LaunchedEffect(recentlyPlayed) {
-        Log.d(TAG, "Recently played updated: ${recentlyPlayed.size} items")
-        recentlyPlayed.forEachIndexed { index, item ->
-            Log.d(TAG, "  Item $index: ${item.music.title} by ${item.music.artist}")
+    // Log current state of most played songs
+    LaunchedEffect(mostPlayedSongs) {
+        Log.d(TAG, "Most played songs updated: ${mostPlayedSongs.size} items")
+        mostPlayedSongs.forEachIndexed { index, item ->
+            Log.d(TAG, "  Item $index: ${item.music.title} by ${item.music.artist}, count: ${item.playCount}")
         }
     }
 
@@ -96,20 +94,20 @@ fun HomeScreen(
             when (event) {
                 Lifecycle.Event.ON_CREATE -> {
                     Log.d(TAG, "HomeScreen: ON_CREATE")
-                    viewModel.refreshRecentlyPlayed()
+                    viewModel.refreshMostPlayedSongs()
                 }
                 Lifecycle.Event.ON_START -> {
                     Log.d(TAG, "HomeScreen: ON_START")
-                    viewModel.refreshRecentlyPlayed()
+                    viewModel.refreshMostPlayedSongs()
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     Log.d(TAG, "HomeScreen: ON_RESUME")
-                    viewModel.refreshRecentlyPlayed()
+                    viewModel.refreshMostPlayedSongs()
 
                     // Extra refresh after a short delay to ensure data loads
                     coroutineScope.launch {
                         delay(300)
-                        viewModel.refreshRecentlyPlayed()
+                        viewModel.refreshMostPlayedSongs()
                     }
                 }
                 else -> { /* ignore other events */ }
@@ -122,14 +120,14 @@ fun HomeScreen(
         }
     }
 
-    // Force initial refresh of recently played
+    // Force initial refresh of most played songs
     LaunchedEffect(Unit) {
         Log.d(TAG, "Initial launch effect")
-        viewModel.refreshRecentlyPlayed()
+        viewModel.refreshMostPlayedSongs()
 
         // Double refresh with delay for better reliability
         delay(300)
-        viewModel.refreshRecentlyPlayed()
+        viewModel.refreshMostPlayedSongs()
     }
 
     Scaffold(
@@ -139,9 +137,9 @@ fun HomeScreen(
                 actions = {
                     // Refresh button
                     IconButton(onClick = {
-                        viewModel.refreshRecentlyPlayed()
+                        viewModel.refreshMostPlayedSongs()
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Menyegarkan data riwayat pemutaran")
+                            snackbarHostState.showSnackbar("Menyegarkan data lagu populer")
                         }
                     }) {
                         Icon(
@@ -275,12 +273,12 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                // Only show recently played section if we're not filtering or searching
+                // Only show most played section if we're not filtering or searching
                 if (searchQuery.isEmpty() && selectedArtist == null && selectedGenre == null) {
-                    // Recently Played Section - ALWAYS show this section, even if empty
+                    // Most Played Section - ALWAYS show this section, even if empty
                     item {
-                        RecentlyPlayedSection(
-                            recentlyPlayed = recentlyPlayed,
+                        MostPlayedSection(
+                            mostPlayedSongs = mostPlayedSongs,
                             onMusicClick = { musicId ->
                                 try {
                                     playerViewModel.playMusic(musicId)
@@ -290,9 +288,9 @@ fun HomeScreen(
                                 }
                             }
                         )
-                        // Log the rendering of RecentlyPlayedSection
-                        LaunchedEffect(recentlyPlayed) {
-                            Log.d(TAG, "Rendering RecentlyPlayedSection with ${recentlyPlayed.size} items")
+                        // Log the rendering of MostPlayedSection
+                        LaunchedEffect(mostPlayedSongs) {
+                            Log.d(TAG, "Rendering MostPlayedSection with ${mostPlayedSongs.size} items")
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                     }
@@ -317,17 +315,17 @@ fun HomeScreen(
                             }
 
                             // Most played song if available
-                            if (mostPlayed.isNotEmpty()) {
+                            if (mostPlayedSongs.isNotEmpty()) {
                                 item {
-                                    val mostPlayedMusic = viewModel.getMusicFromHistory(mostPlayed.first())
+                                    val topSong = viewModel.getMusicFromPlayCount(mostPlayedSongs.first())
                                     HighlightCard(
-                                        title = "Lagu Populer",
+                                        title = "Lagu Terpopuler",
                                         icon = Icons.Default.Favorite,
-                                        music = mostPlayedMusic,
+                                        music = topSong,
                                         onClick = {
                                             try {
-                                                playerViewModel.playMusic(mostPlayedMusic.id)
-                                                onMusicClick(mostPlayedMusic.id)
+                                                playerViewModel.playMusic(topSong.id)
+                                                onMusicClick(topSong.id)
                                             } catch (e: Exception) {
                                                 Log.e(TAG, "Error playing popular music: ${e.message}", e)
                                             }

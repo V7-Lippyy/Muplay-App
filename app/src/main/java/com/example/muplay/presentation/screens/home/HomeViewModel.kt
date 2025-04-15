@@ -4,9 +4,9 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.model.Music
-import com.example.muplay.data.model.MusicWithHistory
-import com.example.muplay.data.repository.HistoryRepository
+import com.example.muplay.data.model.MusicWithPlayCount
 import com.example.muplay.data.repository.MusicRepository
+import com.example.muplay.data.repository.PlayCountRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,7 +26,7 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val musicRepository: MusicRepository,
-    private val historyRepository: HistoryRepository
+    private val playCountRepository: PlayCountRepository
 ) : ViewModel() {
     private val TAG = "HomeViewModel"
 
@@ -105,38 +105,24 @@ class HomeViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
-    // CRITICAL: Recently played songs - use combine with _forceRefresh to ensure updates
+    // Most played songs - get songs with play count of 5 or more
     // Use Eagerly so data is always available
-    val recentlyPlayed = combine(
-        historyRepository.getRecentSixPlayed(),
+    val mostPlayedSongs = combine(
+        playCountRepository.getMostPlayedSongs(9),
         _forceRefresh
-    ) { history, _ ->
-        Log.d(TAG, "Recently played refreshed, found ${history.size} items")
-        history
+    ) { songs, _ ->
+        Log.d(TAG, "Most played songs refreshed, found ${songs.size} items")
+        songs
     }
         .flowOn(Dispatchers.IO)
         .distinctUntilChanged()
         .catch { e ->
-            Log.e(TAG, "Error in recentlyPlayed flow: ${e.message}", e)
+            Log.e(TAG, "Error in mostPlayedSongs flow: ${e.message}", e)
             emit(emptyList())
         }
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.Eagerly,
-            initialValue = emptyList()
-        )
-
-    // Most played songs
-    val mostPlayed = historyRepository.getMostPlayed(6)
-        .flowOn(Dispatchers.IO)
-        .distinctUntilChanged()
-        .catch { e ->
-            Log.e(TAG, "Error in mostPlayed flow: ${e.message}", e)
-            emit(emptyList())
-        }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(30000),
             initialValue = emptyList()
         )
 
@@ -184,15 +170,15 @@ class HomeViewModel @Inject constructor(
         _selectedGenre.value = null
     }
 
-    // Force refresh the recently played list
-    fun refreshRecentlyPlayed() {
-        Log.d(TAG, "Forcing refresh of recently played")
+    // Force refresh the most played songs list
+    fun refreshMostPlayedSongs() {
+        Log.d(TAG, "Forcing refresh of most played songs")
         _forceRefresh.value = _forceRefresh.value + 1
     }
 
     init {
-        // Immediately refresh history data
-        refreshRecentlyPlayed()
+        // Immediately refresh data
+        refreshMostPlayedSongs()
 
         viewModelScope.launch {
             try {
@@ -200,15 +186,15 @@ class HomeViewModel @Inject constructor(
                 musicRepository.refreshMusicLibrary()
 
                 // Refresh again after music library loaded
-                refreshRecentlyPlayed()
+                refreshMostPlayedSongs()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in init: ${e.message}", e)
             }
         }
     }
 
-    // Convert MusicWithHistory to Music
-    fun getMusicFromHistory(musicWithHistory: MusicWithHistory): Music {
-        return musicWithHistory.music
+    // Convert MusicWithPlayCount to Music
+    fun getMusicFromPlayCount(musicWithPlayCount: MusicWithPlayCount): Music {
+        return musicWithPlayCount.music
     }
 }

@@ -21,7 +21,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.muplay.R
 import com.example.muplay.data.model.Music
-import com.example.muplay.data.repository.HistoryRepository
+import com.example.muplay.data.repository.PlayCountRepository
 import com.example.muplay.presentation.MainActivity
 import com.example.muplay.receiver.MediaButtonReceiver
 import com.example.muplay.util.Constants
@@ -54,16 +54,12 @@ class MusicPlayerService : Service() {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     @Inject
-    lateinit var historyRepository: HistoryRepository
+    lateinit var playCountRepository: PlayCountRepository
 
     private val binder = MusicPlayerBinder()
     private lateinit var player: ExoPlayer
     private var positionPollerJob: Job? = null
     private var isServiceActive = true
-
-    // Simpan ID musik terakhir yang diputar dan timestamp untuk mencegah duplikasi
-    private var lastPlayedMusicId: Long = -1
-    private var lastPlayedTimestamp: Long = 0
 
     // Inisialisasi CoverArtManager
     private lateinit var coverArtManager: CoverArtManager
@@ -91,11 +87,8 @@ class MusicPlayerService : Service() {
         const val STATE_PLAYING = 3
         const val STATE_PAUSED = 2
 
-        // Konstanta untuk anti-duplikasi riwayat
-        const val MIN_TIME_BETWEEN_HISTORY_ENTRIES = 10000L // 10 detik
-
-        // Maximum history entries to maintain
-        const val MAX_HISTORY_ENTRIES = 6
+        // Threshold for frequently played songs
+        const val PLAY_COUNT_THRESHOLD = 5
     }
 
     private val playerListener = object : Player.Listener {
@@ -108,10 +101,10 @@ class MusicPlayerService : Service() {
                 startPositionPoller()
                 safelyUpdateNotification()
 
-                // Record play in history immediately when playback starts
+                // Increment play count when playback starts
                 _currentMusic.value?.let { music ->
-                    Log.d(TAG, "Adding to history as playback started: ${music.id}")
-                    addToHistory(music.id)
+                    Log.d(TAG, "Incrementing play count as playback started: ${music.id}")
+                    incrementPlayCount(music.id)
                 }
             } else {
                 stopPositionPoller()
@@ -122,10 +115,10 @@ class MusicPlayerService : Service() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             Log.d(TAG, "Playback state changed: $playbackState")
             if (playbackState == Player.STATE_ENDED) {
-                // Add song to history when it finishes playing
+                // Increment play count when the song finishes playing
                 _currentMusic.value?.let { music ->
-                    Log.d(TAG, "Adding to history as playback completed: ${music.id}")
-                    addToHistory(music.id, music.duration)
+                    Log.d(TAG, "Incrementing play count as playback completed: ${music.id}")
+                    incrementPlayCount(music.id)
                 }
             } else if (playbackState == Player.STATE_READY) {
                 Log.d(TAG, "Player is ready")
@@ -151,22 +144,18 @@ class MusicPlayerService : Service() {
         }
     }
 
-    // Helper function to add to history with proper error handling
-    private fun addToHistory(musicId: Long, playDuration: Long? = null) {
+    // Helper function to increment play count with proper error handling
+    private fun incrementPlayCount(musicId: Long) {
         ioScope.launch {
             try {
                 // Use IO Dispatcher for database operations
-                historyRepository.addToHistory(musicId, playDuration)
-                Log.d(TAG, "Successfully added music ID $musicId to history")
-
-                // Record that we just added this song to avoid duplicates
-                lastPlayedMusicId = musicId
-                lastPlayedTimestamp = System.currentTimeMillis()
+                playCountRepository.incrementPlayCount(musicId)
+                Log.d(TAG, "Successfully incremented play count for music ID $musicId")
 
                 // Small delay to ensure DB operation completes
                 delay(100)
             } catch (e: Exception) {
-                Log.e(TAG, "Error adding to history: ${e.message}", e)
+                Log.e(TAG, "Error incrementing play count: ${e.message}", e)
             }
         }
     }
@@ -404,23 +393,6 @@ class MusicPlayerService : Service() {
                 _currentMusic.value = music
                 Log.d(TAG, "Current music updated to: ${music.title}")
 
-                // Add to history (only if not duplicate)
-                val currentTime = System.currentTimeMillis()
-                val shouldAddToHistory = if (musicId == lastPlayedMusicId) {
-                    val timeDiff = currentTime - lastPlayedTimestamp
-                    timeDiff > MIN_TIME_BETWEEN_HISTORY_ENTRIES
-                } else {
-                    true
-                }
-
-                if (shouldAddToHistory) {
-                    // Add to history immediately when song changes
-                    addToHistory(musicId)
-                    Log.d(TAG, "Added to history on media item transition: $musicId")
-                } else {
-                    Log.d(TAG, "Skipped adding to history: $musicId (recently played)")
-                }
-
                 // Update notification
                 safelyUpdateNotification()
             }
@@ -449,8 +421,8 @@ class MusicPlayerService : Service() {
 
                 Log.d(TAG, "Started playing music: ${music.title}")
 
-                // Directly add to history when explicitly playing a song
-                addToHistory(music.id)
+                // Increment play count when explicitly playing a song
+                incrementPlayCount(music.id)
 
                 // Update notification
                 safelyUpdateNotification()
@@ -508,8 +480,8 @@ class MusicPlayerService : Service() {
                     player.seekTo(index, 0)
                     Log.d(TAG, "Seeking to song at position $index: ${currentMusic.title}")
 
-                    // Add this song to history immediately
-                    addToHistory(currentMusic.id)
+                    // Increment play count for this song
+                    incrementPlayCount(currentMusic.id)
                 }
             }
 
@@ -556,9 +528,9 @@ class MusicPlayerService : Service() {
             } else {
                 player.play()
 
-                // Add to history when resuming play
+                // Increment play count when resuming play
                 _currentMusic.value?.let { music ->
-                    addToHistory(music.id)
+                    incrementPlayCount(music.id)
                 }
             }
             _isPlaying.value = player.isPlaying

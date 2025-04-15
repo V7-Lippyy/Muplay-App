@@ -11,6 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.model.Music
 import com.example.muplay.data.repository.MusicRepository
+import com.example.muplay.data.repository.PlayCountRepository
 import com.example.muplay.service.MusicPlayerService
 import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -27,7 +28,8 @@ import javax.inject.Inject
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val playCountRepository: PlayCountRepository
 ) : ViewModel() {
 
     private var musicPlayerService: MusicPlayerService? = null
