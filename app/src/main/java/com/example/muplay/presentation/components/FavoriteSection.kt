@@ -106,17 +106,19 @@ fun FavoriteSection(
                 }
             }
         } else {
-            // Display favorite songs in horizontal list
+            // Display favorite songs in horizontal list with fixed size to ensure 1:1 ratio
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Take at most 3 favorites to display
                 items(favoriteSongs.take(3)) { favoriteItem ->
+                    // Fixed width ensures the card maintains proper proportions
+                    // The height will be determined by the aspectRatio in the card
                     FavoriteCard(
                         musicWithPlayCount = favoriteItem,
                         onClick = { onMusicClick(favoriteItem.music.id) },
-                        modifier = Modifier.width(160.dp)
+                        modifier = Modifier.width(140.dp) // Fixed width to ensure proper sizing
                     )
                 }
             }

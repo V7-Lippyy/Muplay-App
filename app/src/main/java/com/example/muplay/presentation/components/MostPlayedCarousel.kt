@@ -102,15 +102,13 @@ private fun MostPlayedGrid(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 rowSongs.forEach { musicWithCount ->
-                    // Display play count as extra info
-                    val playCountText = "${musicWithCount.playCount} kali diputar"
-
                     MusicCard(
                         music = musicWithCount.music,
                         onClick = { onMusicClick(musicWithCount.music.id) },
-                        extraInfo = playCountText,
                         isCompact = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .width(120.dp) // Fixed width to ensure proper sizing
                     )
                 }
 

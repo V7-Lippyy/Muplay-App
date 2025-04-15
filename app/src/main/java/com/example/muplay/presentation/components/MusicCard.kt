@@ -1,7 +1,6 @@
 package com.example.muplay.presentation.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -30,20 +30,18 @@ import com.example.muplay.util.TimeUtil
 
 /**
  * A music card component that can be displayed in either regular or compact layout.
- * This version is backward compatible with existing code that only passes music and onClick.
  */
 @Composable
 fun MusicCard(
     music: Music,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    extraInfo: String? = null,
     isCompact: Boolean = false
 ) {
     if (isCompact) {
-        CompactMusicCard(music, onClick, extraInfo, modifier)
+        CompactMusicCard(music, onClick, modifier)
     } else {
-        RegularMusicCard(music, onClick, extraInfo, modifier)
+        RegularMusicCard(music, onClick, modifier)
     }
 }
 
@@ -54,13 +52,17 @@ fun MusicCard(
 fun RegularMusicCard(
     music: Music,
     onClick: () -> Unit,
-    extraInfo: String? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
             modifier = Modifier
@@ -69,21 +71,17 @@ fun RegularMusicCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Album Art
-            Box(
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(music.albumArtPath)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Album art",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(56.dp)
-                    .clip(MaterialTheme.shapes.small)
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(music.albumArtPath)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Album art",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+                    .clip(RoundedCornerShape(8.dp)) // Reduced from 12.dp to 8.dp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -93,35 +91,28 @@ fun RegularMusicCard(
             ) {
                 Text(
                     text = music.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
                     text = music.artist,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                 )
-
-                // Optional extra info (like "Played 5 minutes ago")
-                if (extraInfo != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = extraInfo,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
             }
 
             // Duration
             Text(
                 text = TimeUtil.formatDuration(music.duration),
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
             )
         }
     }
@@ -134,43 +125,47 @@ fun RegularMusicCard(
 fun CompactMusicCard(
     music: Music,
     onClick: () -> Unit,
-    extraInfo: String? = null,
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
-            .height(180.dp) // Fixed height to ensure consistent grid layout
+            .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
-        Column {
-            // Album Art (square aspect ratio)
-            Box(
+        Column(
+            horizontalAlignment = Alignment.Start,
+            modifier = Modifier.padding(8.dp)
+        ) {
+            // Album Art with rounded corners
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(music.albumArtPath)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Album art",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(1f) // Make it square
-                    .clip(MaterialTheme.shapes.medium)
-            ) {
-                AsyncImage(
-                    model = ImageRequest.Builder(LocalContext.current)
-                        .data(music.albumArtPath)
-                        .crossfade(true)
-                        .build(),
-                    contentDescription = "Album art",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+                    .aspectRatio(1f)
+                    .clip(RoundedCornerShape(8.dp)) // Reduced from 12.dp to 8.dp
+            )
 
             // Song Details
             Column(
-                modifier = Modifier.padding(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
                 Text(
                     text = music.title,
                     style = MaterialTheme.typography.bodyMedium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 Spacer(modifier = Modifier.height(2.dp))
@@ -180,21 +175,11 @@ fun CompactMusicCard(
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                 )
-
-                // Extra info (like "Played 5 minutes ago")
-                if (extraInfo != null) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = extraInfo,
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-                    )
-                }
             }
+
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }
