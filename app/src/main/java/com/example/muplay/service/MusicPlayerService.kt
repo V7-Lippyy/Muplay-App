@@ -20,8 +20,11 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.example.muplay.R
+import com.example.muplay.data.model.LrcContent
 import com.example.muplay.data.model.Music
+import com.example.muplay.data.model.LyricLine
 import com.example.muplay.data.repository.PlayCountRepository
+import com.example.muplay.data.repository.LyricRepository
 import com.example.muplay.presentation.MainActivity
 import com.example.muplay.receiver.MediaButtonReceiver
 import com.example.muplay.util.Constants
@@ -56,6 +59,9 @@ class MusicPlayerService : Service() {
     @Inject
     lateinit var playCountRepository: PlayCountRepository
 
+    @Inject
+    lateinit var lyricRepository: LyricRepository
+
     private val binder = MusicPlayerBinder()
     private lateinit var player: ExoPlayer
     private var positionPollerJob: Job? = null
@@ -81,6 +87,13 @@ class MusicPlayerService : Service() {
 
     private val _playlist = MutableStateFlow<List<Music>>(emptyList())
     val playlist: StateFlow<List<Music>> = _playlist.asStateFlow()
+
+    // Lyrics state for the current track
+    private val _currentLrcContent = MutableStateFlow<LrcContent>(LrcContent())
+    val currentLrcContent: StateFlow<LrcContent> = _currentLrcContent.asStateFlow()
+
+    private val _currentLyricLine = MutableStateFlow<LyricLine?>(null)
+    val currentLyricLine: StateFlow<LyricLine?> = _currentLyricLine.asStateFlow()
 
     // Define playback states
     companion object {
@@ -136,11 +149,54 @@ class MusicPlayerService : Service() {
                 // Update current song info
                 updateCurrentMusic(it)
                 safelyUpdateNotification()
+
+                // Load lyrics for the new track
+                loadLyricsForCurrentTrack()
             }
         }
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             Log.e(TAG, "Player error: ${error.message}", error)
+        }
+    }
+
+    /**
+     * Load lyrics for the current track
+     */
+    private fun loadLyricsForCurrentTrack() {
+        val musicId = _currentMusic.value?.id ?: return
+
+        ioScope.launch {
+            try {
+                if (lyricRepository.hasLyrics(musicId)) {
+                    val lrcContent = lyricRepository.loadLrcContent(musicId)
+                    _currentLrcContent.value = lrcContent
+                    Log.d(TAG, "Loaded lyrics for music ID $musicId with ${lrcContent.lines.size} lines")
+                } else {
+                    _currentLrcContent.value = LrcContent()
+                    _currentLyricLine.value = null
+                    Log.d(TAG, "No lyrics found for music ID $musicId")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading lyrics: ${e.message}", e)
+            }
+        }
+    }
+
+    /**
+     * Update the current lyric line based on playback position
+     */
+    private fun updateCurrentLyricLine(position: Long) {
+        val content = _currentLrcContent.value
+        if (content.lines.isEmpty()) return
+
+        ioScope.launch {
+            try {
+                val currentLine = lyricRepository.getCurrentLyricLine(content, position)
+                _currentLyricLine.value = currentLine
+            } catch (e: Exception) {
+                Log.e(TAG, "Error updating current lyric line: ${e.message}", e)
+            }
         }
     }
 
@@ -367,8 +423,13 @@ class MusicPlayerService : Service() {
         positionPollerJob = serviceScope.launch {
             try {
                 while (isActive && isServiceActive && _isPlaying.value) {
-                    _playbackPosition.value = player.currentPosition
-                    kotlinx.coroutines.delay(1000) // Update every 1 second
+                    val position = player.currentPosition
+                    _playbackPosition.value = position
+                    // Update lyric line if we have lyrics
+                    if (_currentLrcContent.value.lines.isNotEmpty()) {
+                        updateCurrentLyricLine(position)
+                    }
+                    kotlinx.coroutines.delay(200) // Update more frequently for smoother lyrics sync
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in position poller: ${e.message}", e)
@@ -423,6 +484,9 @@ class MusicPlayerService : Service() {
 
                 // Increment play count when explicitly playing a song
                 incrementPlayCount(music.id)
+
+                // Load lyrics for the current track
+                loadLyricsForCurrentTrack()
 
                 // Update notification
                 safelyUpdateNotification()
@@ -482,6 +546,9 @@ class MusicPlayerService : Service() {
 
                     // Increment play count for this song
                     incrementPlayCount(currentMusic.id)
+
+                    // Load lyrics for this track
+                    loadLyricsForCurrentTrack()
                 }
             }
 
@@ -596,6 +663,11 @@ class MusicPlayerService : Service() {
             Log.d(TAG, "Seek to position: $position")
             player.seekTo(position)
             _playbackPosition.value = position
+
+            // Update lyric line based on new position
+            if (_currentLrcContent.value.lines.isNotEmpty()) {
+                updateCurrentLyricLine(position)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error in seekTo: ${e.message}", e)
         }

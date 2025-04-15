@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.model.Music
+import com.example.muplay.data.repository.LyricRepository
 import com.example.muplay.data.repository.MusicRepository
 import com.example.muplay.data.repository.PlayCountRepository
 import com.example.muplay.service.MusicPlayerService
@@ -17,11 +18,9 @@ import com.example.muplay.util.CoverArtManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,7 +28,8 @@ import javax.inject.Inject
 class PlayerViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val musicRepository: MusicRepository,
-    private val playCountRepository: PlayCountRepository
+    private val playCountRepository: PlayCountRepository,
+    private val lyricRepository: LyricRepository
 ) : ViewModel() {
 
     private var musicPlayerService: MusicPlayerService? = null
@@ -37,7 +37,7 @@ class PlayerViewModel @Inject constructor(
     private var pendingMusicId: Long? = null
     private val coverArtManager = CoverArtManager(context)
 
-    // Placeholder state flows jika service belum terhubung
+    // Placeholder state flows if service isn't connected yet
     private val _currentMusic = MutableStateFlow<Music?>(null)
     private val _isPlaying = MutableStateFlow(false)
     private val _playbackPosition = MutableStateFlow(0L)
@@ -45,15 +45,23 @@ class PlayerViewModel @Inject constructor(
     private val _repeatMode = MutableStateFlow(0)
     private val _volume = MutableStateFlow(1.0f)
     private val _isFavorite = MutableStateFlow(false)
+
+    // Timeline position for lyrics synchronization
+    private val _currentTimelinePosition = MutableStateFlow(0L)
+    val currentTimelinePosition: StateFlow<Long> = _currentTimelinePosition.asStateFlow()
+
     val volume = _volume.asStateFlow()
     val isFavorite = _isFavorite.asStateFlow()
 
-    // UI states yang disinkronkan dengan service
+    // UI states synchronized with service
     val currentMusic: StateFlow<Music?> get() = musicPlayerService?.currentMusic ?: _currentMusic
     val isPlaying: StateFlow<Boolean> get() = musicPlayerService?.isPlaying ?: _isPlaying
     val playbackPosition: StateFlow<Long> get() = musicPlayerService?.playbackPosition ?: _playbackPosition
     val shuffleMode: StateFlow<Boolean> get() = musicPlayerService?.shuffleMode ?: _shuffleMode
     val repeatMode: StateFlow<Int> get() = musicPlayerService?.repeatMode ?: _repeatMode
+
+    // Has lyrics check based on current music
+    val hasLyrics = MutableStateFlow(false)
 
     // Service connection
     private val serviceConnection = object : ServiceConnection {
@@ -63,7 +71,7 @@ class PlayerViewModel @Inject constructor(
             musicPlayerService = binder.getService()
             bound = true
 
-            // Sync state dari service ke ViewModel saat koneksi pertama kali
+            // Sync state from service to ViewModel on initial connection
             syncServiceState()
 
             // Play any pending music
@@ -82,7 +90,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     init {
-        // Bind ke music player service dan start service juga
+        // Bind to music player service and start service
         Log.d("PlayerViewModel", "Initializing PlayerViewModel")
         startAndBindMusicService()
     }
@@ -173,6 +181,20 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // Check if a song has lyrics
+    fun checkLyrics(musicId: Long) {
+        viewModelScope.launch {
+            try {
+                val hasLyricsValue = lyricRepository.hasLyrics(musicId)
+                hasLyrics.value = hasLyricsValue
+                Log.d("PlayerViewModel", "Lyrics check for music ID $musicId: $hasLyricsValue")
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error checking lyrics: ${e.message}", e)
+                hasLyrics.value = false
+            }
+        }
+    }
+
     private fun startAndBindMusicService() {
         Log.d("PlayerViewModel", "Starting and binding music service")
         Intent(context, MusicPlayerService::class.java).also { intent ->
@@ -183,7 +205,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    // Sinkronisasi state dari service saat pertama kali terhubung
+    // Sync state from service when first connected
     private fun syncServiceState() {
         musicPlayerService?.let { service ->
             Log.d("PlayerViewModel", "Syncing state from service")
@@ -191,11 +213,15 @@ class PlayerViewModel @Inject constructor(
                 service.currentMusic.collect { music ->
                     _currentMusic.value = music
 
-                    // Check if current music is favorite
+                    // Check if current music has lyrics
                     music?.let {
+                        // Check if current music is favorite
                         val playCount = playCountRepository.getPlayCountForMusic(it.id).first()
                         _isFavorite.value = playCount?.isFavorite ?: false
                         Log.d("PlayerViewModel", "Current music favorite status: ${_isFavorite.value}")
+
+                        // Check if it has lyrics
+                        checkLyrics(it.id)
                     }
 
                     // Verify cover art exists for the current music
@@ -215,6 +241,7 @@ class PlayerViewModel @Inject constructor(
             viewModelScope.launch {
                 service.playbackPosition.collect { position ->
                     _playbackPosition.value = position
+                    _currentTimelinePosition.value = position // Update timeline position for lyrics sync
                 }
             }
 
@@ -241,7 +268,7 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
-    // Function untuk memutar lagu berdasarkan ID
+    // Function to play music by ID
     fun playMusic(musicId: Long) {
         Log.d("PlayerViewModel", "playMusic called with ID: $musicId")
 
@@ -263,7 +290,7 @@ class PlayerViewModel @Inject constructor(
                 // Get all music for playlist
                 val allMusic = musicRepository.getAllMusic().first()
 
-                // Get music by ID, using first() to get a single value instead of collecting indefinitely
+                // Get music by ID
                 val music = musicRepository.getMusicById(musicId).first()
 
                 if (music != null) {
@@ -272,6 +299,9 @@ class PlayerViewModel @Inject constructor(
                     // Check if music is favorite
                     val playCount = playCountRepository.getPlayCountForMusic(musicId).first()
                     _isFavorite.value = playCount?.isFavorite ?: false
+
+                    // Check if it has lyrics
+                    checkLyrics(musicId)
 
                     // Verify cover art exists
                     val exists = coverArtManager.coverArtExists(music.albumArtPath)
@@ -321,6 +351,8 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(position: Long) {
         try {
             musicPlayerService?.seekTo(position)
+            _playbackPosition.value = position
+            _currentTimelinePosition.value = position // Update timeline position for lyrics sync
         } catch (e: Exception) {
             Log.e("PlayerViewModel", "Error seeking to position: ${e.message}", e)
         }

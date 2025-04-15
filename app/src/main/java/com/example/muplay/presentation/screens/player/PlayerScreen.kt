@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
@@ -16,12 +17,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Repeat
@@ -43,6 +46,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -53,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
@@ -62,8 +67,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.media3.common.Player
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import com.example.muplay.presentation.components.LyricsBottomSheet
 import com.example.muplay.presentation.components.MetadataEditorDialog
 import com.example.muplay.presentation.theme.PlayButtonColor
+import com.example.muplay.presentation.viewmodel.LyricsViewModel
 import com.example.muplay.util.TimeUtil
 import kotlinx.coroutines.launch
 
@@ -81,12 +88,32 @@ fun PlayerScreen(
     val volume by viewModel.volume.collectAsState()
     val isFavorite by viewModel.isFavorite.collectAsState()
 
+    // Lyrics states
+    val lyricsViewModel: LyricsViewModel = hiltViewModel()
+    var showLyrics by remember { mutableStateOf(false) }
+    val lyrics by lyricsViewModel.synchronizedLyrics.collectAsState()
+    val hasLyrics by lyricsViewModel.hasLyrics.collectAsState()
+    val isLoadingLyrics by lyricsViewModel.isLoading.collectAsState()
+    val lyricsError by lyricsViewModel.errorMessage.collectAsState()
+
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
     // State for image picker and metadata editor
     var showCustomCoverDialog by remember { mutableStateOf(false) }
     var showMetadataEditorDialog by remember { mutableStateOf(false) }
+
+    // When currentMusic changes, update the LyricsViewModel
+    LaunchedEffect(currentMusic) {
+        currentMusic?.let { music ->
+            lyricsViewModel.init(music)
+        }
+    }
+
+    // Update playback position in LyricsViewModel when it changes
+    LaunchedEffect(playbackPosition) {
+        lyricsViewModel.updatePosition(playbackPosition)
+    }
 
     // Content URI dari image picker
     val getContent = rememberImagePickerLauncher { uri ->
@@ -108,6 +135,15 @@ fun PlayerScreen(
                     }
                 }
             )
+        },
+        // Add pointer input modifier for detecting swipe up gesture
+        modifier = Modifier.pointerInput(Unit) {
+            detectVerticalDragGestures { _, dragAmount ->
+                // If dragged up significantly, show lyrics
+                if (dragAmount < -50 && !showLyrics) {
+                    showLyrics = true
+                }
+            }
         }
     ) { innerPadding ->
         Column(
@@ -366,6 +402,25 @@ fun PlayerScreen(
                     )
                 }
 
+                // Show Lyrics button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    TextButton(
+                        onClick = { showLyrics = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowUp,
+                            contentDescription = null,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Lyrics")
+                    }
+                }
+
                 // Custom cover art dialog
                 if (showCustomCoverDialog) {
                     AlertDialog(
@@ -411,6 +466,22 @@ fun PlayerScreen(
                 }
             }
         }
+
+        // Add Lyrics Bottom Sheet
+        LyricsBottomSheet(
+            isVisible = showLyrics,
+            currentMusic = currentMusic,
+            lyrics = lyrics,
+            hasLyrics = hasLyrics,
+            isLoading = isLoadingLyrics,
+            errorMessage = lyricsError,
+            onDismiss = { showLyrics = false },
+            onAddLyrics = { uri -> lyricsViewModel.addLyricsFromUri(uri) },
+            onDeleteLyrics = { lyricsViewModel.deleteLyrics() },
+            onManualScrollStarted = { lyricsViewModel.onManualScrollStarted() },
+            onManualScrollEnded = { lyricsViewModel.onManualScrollEnded() },
+            onClearError = { lyricsViewModel.clearError() }
+        )
     }
 }
 

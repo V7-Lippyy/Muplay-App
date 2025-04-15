@@ -10,6 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.muplay.data.local.database.MuplayDatabase
 import com.example.muplay.data.local.database.dao.AlbumDao
 import com.example.muplay.data.local.database.dao.ArtistDao
+import com.example.muplay.data.local.database.dao.LyricDao
 import com.example.muplay.data.local.database.dao.MusicDao
 import com.example.muplay.data.local.database.dao.PlayCountDao
 import com.example.muplay.data.local.database.dao.PlaylistDao
@@ -36,7 +37,7 @@ object AppModule {
             MuplayDatabase::class.java,
             "muplay_database"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_3_4, MIGRATION_4_5)
             .fallbackToDestructiveMigration() // Sebagai fallback jika migrasi gagal
             .build()
     }
@@ -69,6 +70,12 @@ object AppModule {
     @Provides
     fun provideArtistDao(database: MuplayDatabase): ArtistDao {
         return database.artistDao()
+    }
+
+    @Singleton
+    @Provides
+    fun provideLyricDao(database: MuplayDatabase): LyricDao {
+        return database.lyricDao()
     }
 
     @Singleton
@@ -121,6 +128,29 @@ object AppModule {
                     `isFavorite` INTEGER NOT NULL DEFAULT 0
                 )
                 """
+            )
+        }
+    }
+
+    // Migration from version 4 to 5 (adding lyrics support)
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            // Create the lyric table
+            database.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `lyric` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `musicId` INTEGER NOT NULL,
+                    `lrcPath` TEXT,
+                    `lastUpdated` INTEGER NOT NULL,
+                    FOREIGN KEY(`musicId`) REFERENCES `music`(`id`) ON DELETE CASCADE
+                )
+                """
+            )
+
+            // Create index for musicId
+            database.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_lyric_musicId` ON `lyric` (`musicId`)"
             )
         }
     }
