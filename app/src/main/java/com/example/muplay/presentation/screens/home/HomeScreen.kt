@@ -3,6 +3,7 @@ package com.example.muplay.presentation.screens.home
 import android.util.Log
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.LibraryMusic
@@ -27,6 +29,7 @@ import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -37,6 +40,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
@@ -44,7 +48,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.muplay.presentation.components.HighlightCard
 import com.example.muplay.presentation.components.MostPlayedSection
 import com.example.muplay.presentation.components.MusicCard
 import com.example.muplay.presentation.components.SectionTitle
@@ -59,6 +62,7 @@ private const val TAG = "HomeScreen"
 @Composable
 fun HomeScreen(
     onMusicClick: (Long) -> Unit,
+    onFavoritesClick: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
     playerViewModel: PlayerViewModel = hiltViewModel()
 ) {
@@ -72,6 +76,7 @@ fun HomeScreen(
     val genres by viewModel.genres.collectAsStateWithLifecycle()
     val mostPlayedSongs by viewModel.mostPlayedSongs.collectAsStateWithLifecycle()
     val allSongs by viewModel.totalSongs.collectAsStateWithLifecycle()
+    val favoriteSongs by viewModel.favoriteSongs.collectAsStateWithLifecycle()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
@@ -95,19 +100,23 @@ fun HomeScreen(
                 Lifecycle.Event.ON_CREATE -> {
                     Log.d(TAG, "HomeScreen: ON_CREATE")
                     viewModel.refreshMostPlayedSongs()
+                    viewModel.refreshFavoriteSongs()
                 }
                 Lifecycle.Event.ON_START -> {
                     Log.d(TAG, "HomeScreen: ON_START")
                     viewModel.refreshMostPlayedSongs()
+                    viewModel.refreshFavoriteSongs()
                 }
                 Lifecycle.Event.ON_RESUME -> {
                     Log.d(TAG, "HomeScreen: ON_RESUME")
                     viewModel.refreshMostPlayedSongs()
+                    viewModel.refreshFavoriteSongs()
 
                     // Extra refresh after a short delay to ensure data loads
                     coroutineScope.launch {
                         delay(300)
                         viewModel.refreshMostPlayedSongs()
+                        viewModel.refreshFavoriteSongs()
                     }
                 }
                 else -> { /* ignore other events */ }
@@ -120,14 +129,16 @@ fun HomeScreen(
         }
     }
 
-    // Force initial refresh of most played songs
+    // Force initial refresh of most played songs and favorites
     LaunchedEffect(Unit) {
         Log.d(TAG, "Initial launch effect")
         viewModel.refreshMostPlayedSongs()
+        viewModel.refreshFavoriteSongs()
 
         // Double refresh with delay for better reliability
         delay(300)
         viewModel.refreshMostPlayedSongs()
+        viewModel.refreshFavoriteSongs()
     }
 
     Scaffold(
@@ -138,8 +149,9 @@ fun HomeScreen(
                     // Refresh button
                     IconButton(onClick = {
                         viewModel.refreshMostPlayedSongs()
+                        viewModel.refreshFavoriteSongs()
                         coroutineScope.launch {
-                            snackbarHostState.showSnackbar("Menyegarkan data lagu populer")
+                            snackbarHostState.showSnackbar("Menyegarkan data lagu")
                         }
                     }) {
                         Icon(
@@ -273,8 +285,65 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                // Only show most played section if we're not filtering or searching
+                // Only show special sections if we're not filtering or searching
                 if (searchQuery.isEmpty() && selectedArtist == null && selectedGenre == null) {
+                    // Favorites Section
+                    item {
+                        if (favoriteSongs.isNotEmpty()) {
+                            // Favorites section header with view all button
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Lagu Disukai",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                TextButton(
+                                    onClick = onFavoritesClick
+                                ) {
+                                    Text("Lihat Semua")
+                                    Icon(
+                                        imageVector = Icons.Default.ChevronRight,
+                                        contentDescription = null
+                                    )
+                                }
+                            }
+
+                            // Display top 3 favorite songs
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            ) {
+                                items(favoriteSongs.take(3)) { item ->
+                                    MusicCard(
+                                        music = item.music,
+                                        onClick = {
+                                            playerViewModel.playMusic(item.music.id)
+                                            onMusicClick(item.music.id)
+                                        },
+                                        isCompact = true,
+                                        modifier = Modifier.padding(end = 16.dp, bottom = 8.dp)
+                                    )
+                                }
+
+                                // If there are less than 3 favorites, show total songs card
+                                if (favoriteSongs.size < 3) {
+                                    item {
+                                        TotalSongsCard(songCount = allSongs.size)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+                        }
+                    }
+
                     // Most Played Section - ALWAYS show this section, even if empty
                     item {
                         MostPlayedSection(
@@ -293,49 +362,6 @@ fun HomeScreen(
                             Log.d(TAG, "Rendering MostPlayedSection with ${mostPlayedSongs.size} items")
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                    }
-
-                    // Highlight cards
-                    item {
-                        Text(
-                            text = "Highlights",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                        )
-
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        ) {
-                            // Total songs card
-                            item {
-                                TotalSongsCard(songCount = allSongs.size)
-                                Spacer(modifier = Modifier.padding(end = 16.dp))
-                            }
-
-                            // Most played song if available
-                            if (mostPlayedSongs.isNotEmpty()) {
-                                item {
-                                    val topSong = viewModel.getMusicFromPlayCount(mostPlayedSongs.first())
-                                    HighlightCard(
-                                        title = "Lagu Terpopuler",
-                                        icon = Icons.Default.Favorite,
-                                        music = topSong,
-                                        onClick = {
-                                            try {
-                                                playerViewModel.playMusic(topSong.id)
-                                                onMusicClick(topSong.id)
-                                            } catch (e: Exception) {
-                                                Log.e(TAG, "Error playing popular music: ${e.message}", e)
-                                            }
-                                        }
-                                    )
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
 

@@ -44,6 +44,17 @@ interface PlayCountDao {
     """)
     fun getTopPlayedMusic(limit: Int = 9): Flow<List<MusicWithPlayCount>>
 
+    @Transaction
+    @Query("""
+        SELECT m.*, pc.count as playCount, pc.lastPlayed, pc.isFavorite
+        FROM music m
+        INNER JOIN play_count pc ON m.id = pc.musicId
+        WHERE pc.isFavorite = 1
+        ORDER BY pc.lastPlayed DESC
+        LIMIT :limit
+    """)
+    fun getFavoriteSongs(limit: Int = 50): Flow<List<MusicWithPlayCount>>
+
     @Query("UPDATE play_count SET isFavorite = :isFavorite WHERE musicId = :musicId")
     suspend fun setFavorite(musicId: Long, isFavorite: Boolean)
 

@@ -4,16 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.muplay.data.model.Album
 import com.example.muplay.data.model.Artist
+import com.example.muplay.data.model.MusicWithPlayCount
 import com.example.muplay.data.model.Playlist
 import com.example.muplay.data.repository.AlbumRepository
 import com.example.muplay.data.repository.ArtistRepository
 import com.example.muplay.data.repository.MusicRepository
+import com.example.muplay.data.repository.PlayCountRepository
 import com.example.muplay.data.repository.PlaylistRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -24,7 +27,8 @@ class CollectionViewModel @Inject constructor(
     private val playlistRepository: PlaylistRepository,
     private val albumRepository: AlbumRepository,
     private val artistRepository: ArtistRepository,
-    private val musicRepository: MusicRepository
+    private val musicRepository: MusicRepository,
+    private val playCountRepository: PlayCountRepository
 ) : ViewModel() {
 
     // Status loading untuk refresh
@@ -34,6 +38,9 @@ class CollectionViewModel @Inject constructor(
     // Status refresh yang menampilkan pesan jika berhasil
     private val _refreshMessage = MutableStateFlow<String?>(null)
     val refreshMessage: StateFlow<String?> = _refreshMessage.asStateFlow()
+
+    // Force refresh trigger for favorites
+    private val _forceRefreshFavorites = MutableStateFlow(0)
 
     // Playlists data
     val allPlaylists = playlistRepository.getAllPlaylistsWithMusic()
@@ -59,6 +66,15 @@ class CollectionViewModel @Inject constructor(
             initialValue = emptyList()
         )
 
+    // Favorite songs data
+    val favoriteSongs = playCountRepository.getFavoriteSongs()
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     init {
         // Bersihkan koleksi kosong saat pertama kali load
         cleanupEmptyCollections()
@@ -77,6 +93,9 @@ class CollectionViewModel @Inject constructor(
                     // Force refresh collections
                     albumRepository.refreshAlbums(allMusic)
                     artistRepository.refreshArtists(allMusic)
+
+                    // Refresh favorites
+                    _forceRefreshFavorites.value += 1
 
                     // Setelah refresh, bersihkan koleksi yang kosong
                     cleanupEmptyCollections()
@@ -143,6 +162,14 @@ class CollectionViewModel @Inject constructor(
     fun updateArtistCover(artistName: String, coverArtPath: String?) {
         viewModelScope.launch {
             artistRepository.updateArtistCover(artistName, coverArtPath)
+        }
+    }
+
+    // Set favorite status
+    fun setFavorite(musicId: Long, isFavorite: Boolean) {
+        viewModelScope.launch {
+            playCountRepository.setFavorite(musicId, isFavorite)
+            _forceRefreshFavorites.value += 1
         }
     }
 }

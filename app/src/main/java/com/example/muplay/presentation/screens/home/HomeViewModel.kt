@@ -42,8 +42,9 @@ class HomeViewModel @Inject constructor(
     private val _selectedGenre = MutableStateFlow<String?>(null)
     val selectedGenre = _selectedGenre.asStateFlow()
 
-    // Force refresh trigger
-    private val _forceRefresh = MutableStateFlow(0)
+    // Force refresh triggers
+    private val _forceRefreshMostPlayed = MutableStateFlow(0)
+    private val _forceRefreshFavorites = MutableStateFlow(0)
 
     // Filtered songs based on search and filters - using combine for efficiency
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -109,7 +110,7 @@ class HomeViewModel @Inject constructor(
     // Use Eagerly so data is always available
     val mostPlayedSongs = combine(
         playCountRepository.getMostPlayedSongs(9),
-        _forceRefresh
+        _forceRefreshMostPlayed
     ) { songs, _ ->
         Log.d(TAG, "Most played songs refreshed, found ${songs.size} items")
         songs
@@ -118,6 +119,26 @@ class HomeViewModel @Inject constructor(
         .distinctUntilChanged()
         .catch { e ->
             Log.e(TAG, "Error in mostPlayedSongs flow: ${e.message}", e)
+            emit(emptyList())
+        }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.Eagerly,
+            initialValue = emptyList()
+        )
+
+    // Favorite songs
+    val favoriteSongs = combine(
+        playCountRepository.getFavoriteSongs(10),
+        _forceRefreshFavorites
+    ) { songs, _ ->
+        Log.d(TAG, "Favorite songs refreshed, found ${songs.size} items")
+        songs
+    }
+        .flowOn(Dispatchers.IO)
+        .distinctUntilChanged()
+        .catch { e ->
+            Log.e(TAG, "Error in favoriteSongs flow: ${e.message}", e)
             emit(emptyList())
         }
         .stateIn(
@@ -173,12 +194,19 @@ class HomeViewModel @Inject constructor(
     // Force refresh the most played songs list
     fun refreshMostPlayedSongs() {
         Log.d(TAG, "Forcing refresh of most played songs")
-        _forceRefresh.value = _forceRefresh.value + 1
+        _forceRefreshMostPlayed.value = _forceRefreshMostPlayed.value + 1
+    }
+
+    // Force refresh favorite songs list
+    fun refreshFavoriteSongs() {
+        Log.d(TAG, "Forcing refresh of favorite songs")
+        _forceRefreshFavorites.value = _forceRefreshFavorites.value + 1
     }
 
     init {
         // Immediately refresh data
         refreshMostPlayedSongs()
+        refreshFavoriteSongs()
 
         viewModelScope.launch {
             try {
@@ -187,6 +215,7 @@ class HomeViewModel @Inject constructor(
 
                 // Refresh again after music library loaded
                 refreshMostPlayedSongs()
+                refreshFavoriteSongs()
             } catch (e: Exception) {
                 Log.e(TAG, "Error in init: ${e.message}", e)
             }

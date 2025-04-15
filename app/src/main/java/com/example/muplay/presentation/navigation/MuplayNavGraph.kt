@@ -47,6 +47,14 @@ fun MuplayNavGraph(
                     // Already handled playing in HomeScreen
                     navController.navigate(Screen.Player.route)
                 },
+                onFavoritesClick = {
+                    // Navigate to Collection screen with Favorites tab selected
+                    navController.navigate(Screen.Collection.route) {
+                        // You can pass the selected tab index as a parameter if needed
+                        // Or handle this within the Collection screen
+                        popUpTo(Screen.Home.route) { saveState = true }
+                    }
+                },
                 playerViewModel = playerViewModel
             )
         }
@@ -72,6 +80,11 @@ fun MuplayNavGraph(
                 },
                 onArtistClick = { artistName ->
                     navController.navigate(Screen.ArtistDetail.createRoute(artistName))
+                },
+                onMusicClick = { musicId ->
+                    Log.d("Navigation", "Playing from collection, musicId: $musicId")
+                    playerViewModel.playMusic(musicId)
+                    navController.navigate(Screen.Player.route)
                 }
             )
         }

@@ -44,7 +44,9 @@ class PlayerViewModel @Inject constructor(
     private val _shuffleMode = MutableStateFlow(false)
     private val _repeatMode = MutableStateFlow(0)
     private val _volume = MutableStateFlow(1.0f)
+    private val _isFavorite = MutableStateFlow(false)
     val volume = _volume.asStateFlow()
+    val isFavorite = _isFavorite.asStateFlow()
 
     // UI states yang disinkronkan dengan service
     val currentMusic: StateFlow<Music?> get() = musicPlayerService?.currentMusic ?: _currentMusic
@@ -114,6 +116,26 @@ class PlayerViewModel @Inject constructor(
         }
     }
 
+    // Toggle favorite status for current music
+    fun toggleFavorite() {
+        val music = _currentMusic.value ?: return
+        val newFavoriteStatus = !_isFavorite.value
+
+        viewModelScope.launch {
+            try {
+                // Update in repository
+                playCountRepository.setFavorite(music.id, newFavoriteStatus)
+
+                // Update local state
+                _isFavorite.value = newFavoriteStatus
+
+                Log.d("PlayerViewModel", "Toggled favorite status for ${music.title} to $newFavoriteStatus")
+            } catch (e: Exception) {
+                Log.e("PlayerViewModel", "Error toggling favorite: ${e.message}", e)
+            }
+        }
+    }
+
     // Update music with custom cover art
     fun updateCustomCoverArt(musicId: Long, uri: Uri) {
         viewModelScope.launch {
@@ -168,6 +190,13 @@ class PlayerViewModel @Inject constructor(
             viewModelScope.launch {
                 service.currentMusic.collect { music ->
                     _currentMusic.value = music
+
+                    // Check if current music is favorite
+                    music?.let {
+                        val playCount = playCountRepository.getPlayCountForMusic(it.id).first()
+                        _isFavorite.value = playCount?.isFavorite ?: false
+                        Log.d("PlayerViewModel", "Current music favorite status: ${_isFavorite.value}")
+                    }
 
                     // Verify cover art exists for the current music
                     music?.let {
@@ -239,6 +268,10 @@ class PlayerViewModel @Inject constructor(
 
                 if (music != null) {
                     Log.d("PlayerViewModel", "Found music: ${music.title}, playing it now")
+
+                    // Check if music is favorite
+                    val playCount = playCountRepository.getPlayCountForMusic(musicId).first()
+                    _isFavorite.value = playCount?.isFavorite ?: false
 
                     // Verify cover art exists
                     val exists = coverArtManager.coverArtExists(music.albumArtPath)

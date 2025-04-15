@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.muplay.presentation.screens.collection.tabs.AlbumsTab
 import com.example.muplay.presentation.screens.collection.tabs.ArtistsTab
+import com.example.muplay.presentation.screens.collection.tabs.FavoritesTab
 import com.example.muplay.presentation.screens.collection.tabs.PlaylistsTab
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +40,7 @@ fun CollectionScreen(
     onPlaylistClick: (Long) -> Unit,
     onAlbumClick: (String) -> Unit,
     onArtistClick: (String) -> Unit,
+    onMusicClick: (Long) -> Unit,
     viewModel: CollectionViewModel = hiltViewModel()
 ) {
     var selectedTabIndex by remember { mutableStateOf(0) }
@@ -136,6 +138,17 @@ fun CollectionScreen(
                         )
                     }
                 )
+                Tab(
+                    selected = selectedTabIndex == 3,
+                    onClick = { selectedTabIndex = 3 },
+                    text = {
+                        Text(
+                            text = "Disukai",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                )
             }
 
             // Tab content
@@ -154,6 +167,10 @@ fun CollectionScreen(
                 )
                 2 -> ArtistsTab(
                     onArtistClick = onArtistClick,
+                    isRefreshing = isRefreshing
+                )
+                3 -> FavoritesTab(
+                    onMusicClick = onMusicClick,
                     isRefreshing = isRefreshing
                 )
             }

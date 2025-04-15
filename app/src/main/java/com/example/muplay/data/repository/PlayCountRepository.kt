@@ -72,6 +72,13 @@ class PlayCountRepository @Inject constructor(
             .flowOn(Dispatchers.IO)
 
     /**
+     * Get favorite songs
+     */
+    fun getFavoriteSongs(limit: Int = 50): Flow<List<MusicWithPlayCount>> =
+        playCountDao.getFavoriteSongs(limit)
+            .flowOn(Dispatchers.IO)
+
+    /**
      * Set a song as favorite
      */
     suspend fun setFavorite(musicId: Long, isFavorite: Boolean) {
