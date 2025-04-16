@@ -198,4 +198,4 @@ class LyricsViewModel @Inject constructor(
         super.onCleared()
         autoScrollResumptionJob?.cancel()
     }
-}
+} a
