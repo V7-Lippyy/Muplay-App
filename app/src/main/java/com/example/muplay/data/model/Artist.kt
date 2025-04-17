@@ -9,4 +9,4 @@ data class Artist(
     val name: String,
     val coverArtPath: String? = null,
     val lastUpdated: Long = System.currentTimeMillis()
-)
+) a
