@@ -28,7 +28,7 @@ import com.example.muplay.data.model.PlaylistMusicCrossRef
         Artist::class,
         Lyric::class  // Added Lyric entity
     ],
-    version = 5, // Increased version number due to schema change for adding lyrics support
+    version = 7, // Increased version number due to schema change for adding lyrics support
     exportSchema = false
 )
 abstract class MuplayDatabase : RoomDatabase() {
