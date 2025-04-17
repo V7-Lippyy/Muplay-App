@@ -177,4 +177,4 @@ class LyricRepository @Inject constructor(
             line.copy(isCurrent = index == currentIndex)
         }
     }
-}
+} a
